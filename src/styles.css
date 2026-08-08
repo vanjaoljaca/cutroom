@@ -238,8 +238,10 @@ button:focus-visible,
 .row-actions button:disabled { opacity: 0.3; cursor: default; }
 .take-row { grid-template-columns: 18px 70px minmax(220px, 1fr) 110px 58px; padding-left: 28px; background: #151715; border-top: 1px solid #272a27; }
 .take-row.selected { background: #1b1b16; box-shadow: inset 3px 0 #f0c84b; }
+.take-row.previewing { background: #17211d; box-shadow: inset 3px 0 #61d6b3; }
 .take-row input { accent-color: #f0c84b; }
 .take-name { padding: 0; text-align: left; font-weight: 650; }
+.take-name small { display: block; margin-top: 2px; color: #61d6b3; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .take-words { overflow: hidden; color: #d5d8d2; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .take-row time { color: #a0a49d; font-size: 11px; font-variant-numeric: tabular-nums; }
 .trim-details { position: relative; color: #9da19b; font-size: 11px; }

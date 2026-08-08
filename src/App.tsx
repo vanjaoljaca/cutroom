@@ -25,6 +25,7 @@ export function App() {
   const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [cutoutStatus, setCutoutStatus] = useState<CutoutJobStatus | null>(null);
+  const [takePreview, setTakePreview] = useState<TakePreview | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const activeRangeRef = useRef(0);
@@ -83,8 +84,15 @@ export function App() {
   function handleTimeUpdate() {
     const video = videoRef.current;
     if (!video) return;
+    const previewRestart = mode === "original" ? takePreviewRestart(video.currentTime, takePreview) : null;
+    if (previewRestart !== null) return restartTakePreview(video, previewRestart);
     setCurrentTime(video.currentTime);
     if (!seekingRef.current && mode === "cut" && ranges.length) advanceCutIfNeeded(video);
+  }
+
+  function restartTakePreview(video: HTMLVideoElement, start: number) {
+    video.currentTime = start;
+    setCurrentTime(start);
   }
 
   function advanceCutIfNeeded(video: HTMLVideoElement) {
@@ -97,6 +105,7 @@ export function App() {
   }
 
   function seekTo(time: number, rangeIndex = activeRange) {
+    setTakePreview(null);
     if (mode === "cut" && switchMediaSource(rangeIndex, time, false)) return;
     seekOnCurrentSource(time, rangeIndex);
   }
@@ -147,6 +156,7 @@ export function App() {
   async function playFromStart() {
     const video = videoRef.current;
     if (!video) return;
+    setTakePreview(null);
     const start = mode === "cut" && ranges[0] ? ranges[0].start : 0;
     await playAt(start, 0);
     logEvent("playback_restarted", { mode, sourceTime: start });
@@ -164,6 +174,7 @@ export function App() {
   }
 
   function changeMode(nextMode: ViewMode) {
+    setTakePreview(null);
     setMode(nextMode);
     if (nextMode === "cut" && ranges.length) switchOrSeek(ranges[0].start, 0);
     if (nextMode === "original" && project) switchToSource(project.mediaLibrary.primarySourceId, 0, 0, false);
@@ -195,6 +206,7 @@ export function App() {
     pendingMediaRef.current = first ? { time: first.start, rangeIndex: 0, play: false } : null;
     setSource(sourceState(normalized, first?.sourceId || normalized.mediaLibrary.primarySourceId));
     setSelectedOverlayId(null);
+    setTakePreview(null);
   }
 
   async function togglePitch() {
@@ -369,15 +381,26 @@ export function App() {
     commitScenes(scenes);
     const sceneIndex = scenes.findIndex((scene) => scene.id === sceneId);
     const selected = scenes[sceneIndex]?.takes.find((take) => take.id === takeId);
-    if (selected) previewSelectedTake(sceneId, selected.start);
+    if (selected) void previewSelectedTake(sceneId, selected);
   }
 
-  function previewSelectedTake(sceneId: string, start: number) {
-    videoRef.current?.pause();
-    setMode("cut");
-    const rangeIndex = Math.max(0, ranges.findIndex((range) => range.sceneId === sceneId));
-    seekTo(start, rangeIndex);
-    logEvent("take_selected", { sceneId, sourceTime: start });
+  async function previewSelectedTake(sceneId: string, take: TakeProposal) {
+    const video = videoRef.current;
+    const sourceId = project?.mediaLibrary.primarySourceId;
+    if (!video || !sourceId) return;
+    video.pause();
+    setMode("original");
+    setTakePreview({ sceneId, takeId: take.id, start: take.start, end: take.end });
+    if (activeSourceId(source.url) !== sourceId) switchToSource(sourceId, take.start, 0, true);
+    else await playTakeOnCurrentSource(video, take.start);
+    logEvent("take_preview_started", { sceneId, takeId: take.id, start: take.start, end: take.end });
+  }
+
+  async function playTakeOnCurrentSource(video: HTMLVideoElement, start: number) {
+    seekOnCurrentSource(start, 0);
+    await waitForSeek(video);
+    seekingRef.current = false;
+    await video.play();
   }
 
   function moveScene(id: string, direction: -1 | 1) {
@@ -456,7 +479,7 @@ export function App() {
         {!ranges.length && <p className="no-cut-note">No take selected. Ask the video task to revise this project.</p>}
         {projectError && <p className="analysis-error">{projectError}</p>}
 
-        {mode === "original" && <div className="phase-preview original"><div className="selection-phase">{playerControls}{project && <AnalysisPanel project={project} duration={originalDuration} onSeek={seekTo} onUpdate={updateTake} onSelect={selectTake} onMove={moveScene} />}</div>{videoPreview}</div>}
+        {mode === "original" && <div className="phase-preview original"><div className="selection-phase">{playerControls}{project && <AnalysisPanel project={project} duration={originalDuration} previewTakeId={takePreview?.takeId || null} onSeek={seekTo} onUpdate={updateTake} onSelect={selectTake} onMove={moveScene} />}</div>{videoPreview}</div>}
         {mode === "cut" && <><div className="phase-preview cut">{videoPreview}</div><div className="edit-phase">{playerControls}
           {project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onCreateCutout={createSubjectCutout} />}
           <Timeline
@@ -569,14 +592,14 @@ function ProgramClipInspector({ project, selectedId, onMove, onRemove, onNudge }
   return <div className="program-clip-inspector" aria-label={`Selected clip ${clip.label}`}><span><strong>{clip.kind === "scene" ? "Scene clip" : "Reference clip"}</strong><small>{clip.label} · {clip.sourceStart.toFixed(2)}–{clip.sourceEnd.toFixed(2)}s</small></span><div><button disabled={index === 0} onClick={() => onMove(-1)}>Earlier</button><button disabled={index === project.programTimeline.clips.length - 1} onClick={() => onMove(1)}>Later</button><button onClick={() => onNudge("start", 0.1)}>Trim start +0.1s</button><button onClick={() => onNudge("end", -0.1)}>Trim end −0.1s</button>{clip.kind === "source" && <button className="remove-program-clip" onClick={onRemove}>Remove</button>}</div></div>;
 }
 
-function AnalysisPanel({ project, duration, onSeek, onUpdate, onSelect, onMove }: AnalysisPanelProps) {
+function AnalysisPanel({ project, duration, previewTakeId, onSeek, onUpdate, onSelect, onMove }: AnalysisPanelProps) {
   return (
     <details className="analysis-panel" open>
       <summary>Scenes and takes <span>{project.scenes.length} scenes · {project.scenes.reduce((count, scene) => count + scene.takes.length, 0)} takes</span></summary>
       <p className="request-summary"><strong>Current interpretation:</strong> {project.requestSummary}</p>
       <div className="pipeline-map"><span>Video task</span><i>→</i><span>Parakeet words</span><i>→</i><span>Scenes</span><i>→</i><span>Takes</span><i>→</i><span>Selected cut</span></div>
       <div className="scene-list">{project.scenes.map((scene, index) => (
-        <SceneRows key={scene.id} scene={scene} index={index} last={index === project.scenes.length - 1} duration={duration} onSeek={onSeek} onUpdate={onUpdate} onSelect={onSelect} onMove={onMove} />
+        <SceneRows key={scene.id} scene={scene} index={index} last={index === project.scenes.length - 1} duration={duration} previewTakeId={previewTakeId} onSeek={onSeek} onUpdate={onUpdate} onSelect={onSelect} onMove={onMove} />
       ))}</div>
       <details className="transcript-details">
         <summary>Timestamped transcript</summary>
@@ -588,20 +611,20 @@ function AnalysisPanel({ project, duration, onSeek, onUpdate, onSelect, onMove }
   );
 }
 
-function SceneRows({ scene, index, last, duration, onSeek, onUpdate, onSelect, onMove }: SceneRowsProps) {
+function SceneRows({ scene, index, last, duration, previewTakeId, onSeek, onUpdate, onSelect, onMove }: SceneRowsProps) {
   return (
     <section className="scene-group">
       <div className="scene-row"><b>{scene.order}</b><span><strong>{scene.label}</strong><small>{scene.reason}</small></span><em>{scene.takes.length} {scene.takes.length === 1 ? "take" : "takes"}</em><span className="row-actions"><button disabled={index === 0} onClick={() => onMove(scene.id, -1)}>Earlier</button><button disabled={last} onClick={() => onMove(scene.id, 1)}>Later</button></span></div>
-      {scene.takes.map((take) => <TakeRow key={take.id} scene={scene} take={take} duration={duration} onSeek={onSeek} onUpdate={onUpdate} onSelect={onSelect} />)}
+      {scene.takes.map((take) => <TakeRow key={take.id} scene={scene} take={take} duration={duration} previewing={previewTakeId === take.id} onUpdate={onUpdate} onSelect={onSelect} />)}
     </section>
   );
 }
 
-function TakeRow({ scene, take, duration, onSeek, onUpdate, onSelect }: TakeRowProps) {
+function TakeRow({ scene, take, duration, previewing, onUpdate, onSelect }: TakeRowProps) {
   return (
-    <div className={`take-row ${take.selected ? "selected" : ""}`}>
+    <div className={`take-row ${take.selected ? "selected" : ""} ${previewing ? "previewing" : ""}`}>
       <input type="radio" name={`scene-${scene.id}`} checked={take.selected} aria-label={`Select ${scene.label} ${take.label}`} onChange={() => onSelect(scene.id, take.id)} />
-      <button className="take-name" onClick={() => onSeek(take.start)}>{take.label}</button>
+      <button className="take-name" aria-pressed={previewing} title={`Loop ${scene.label} ${take.label}`} onClick={() => onSelect(scene.id, take.id)}>{take.label}{previewing && <small>Looping</small>}</button>
       <span className="take-words">“{take.transcript}”<small>{take.reason}</small></span>
       <time>{take.start.toFixed(2)}–{take.end.toFixed(2)}s</time>
       <details className="trim-details"><summary>Trim</summary><label>Start<input type="range" min="0" max={duration} step="0.04" value={take.start} onChange={(event) => onUpdate(scene.id, take.id, "start", Number(event.target.value))} /></label><label>End<input type="range" min="0" max={duration} step="0.04" value={take.end} onChange={(event) => onUpdate(scene.id, take.id, "end", Number(event.target.value))} /></label></details>
@@ -850,14 +873,15 @@ function useWaveformExtraction(source: string, setWaveform: Dispatch<SetStateAct
 type SourceState = { name: string; url: string; objectUrl: boolean };
 type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; pitchVisible: boolean; pitchArtifact: PitchArtifact | null; pitchStatus: PitchStatus; onTogglePitch: () => void; onSeekRatio: (ratio: number) => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrimEnd: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onMoveClip: (direction: -1 | 1) => void; onRemoveClip: () => void; onNudgeClip: (edge: "start" | "end", delta: number) => void; sourceBrowserOpen: boolean; onToggleSources: () => void };
 type ExportNoticeProps = { status: ExportJobStatus | null; onCancel: () => void; onRetry: () => void };
-type AnalysisPanelProps = { project: VideoProject; duration: number; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onMove: (id: string, direction: -1 | 1) => void };
+type AnalysisPanelProps = { project: VideoProject; duration: number; previewTakeId: string | null; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onMove: (id: string, direction: -1 | 1) => void };
 type SceneRowsProps = Omit<AnalysisPanelProps, "project"> & { scene: SceneProposal; index: number; last: boolean };
-type TakeRowProps = Pick<AnalysisPanelProps, "duration" | "onSeek" | "onUpdate" | "onSelect"> & { scene: SceneProposal; take: TakeProposal };
+type TakeRowProps = Pick<AnalysisPanelProps, "duration" | "onUpdate" | "onSelect"> & { scene: SceneProposal; take: TakeProposal; previewing: boolean };
 type TimelineTrimHandler = (clipId: string, end: number, commit: boolean) => void;
 type TimelineTrimHandleProps = { range: SourceRange; before: number; minimum: number; total: number; onPreview: (preview: TimelineTrimPreview | null) => void; onTrimEnd: TimelineTrimHandler };
 type TimelineTrimDrag = { left: number; width: number; before: number; minimum: number; total: number; maximum: number; next: number };
 type ProgramClipInspectorProps = { project: VideoProject; selectedId: string | null; onMove: (direction: -1 | 1) => void; onRemove: () => void; onNudge: (edge: "start" | "end", delta: number) => void };
 type PendingMediaLoad = { time: number; rangeIndex: number; play: boolean };
+type TakePreview = { sceneId: string; takeId: string; start: number; end: number };
 const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 
 import { ArrowsOut, Export as ExportIcon, FilmStrip, List, Pause, Play, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
@@ -874,6 +898,7 @@ import type { PitchArtifact } from "./PitchModel";
 import { handlePageSpace, playbackDecision } from "./PlaybackShortcut";
 import { selectedCutsFromScenes } from "./ProjectCutModel";
 import { timelineTrimPositions, type TimelineTrimPreview } from "./TimelineTrimPreviewModel";
+import { takePreviewRestart } from "./TakePreviewModel";
 import { imageOverlayWithCutInterval } from "./overlay-model";
 import { logError, logEvent } from "./structured-log";
 import { ProjectSaveQueue, type ProjectSaveStatus } from "./ProjectSaveQueue";
