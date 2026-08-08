@@ -29,7 +29,7 @@
     "project:load": "vite-node scripts/LoadProject.ts",
     "project:rename": "vite-node scripts/RenameProject.ts",
     "project:trash": "vite-node scripts/TrashProject.ts",
-    "service:start": "node --experimental-strip-types scripts/CutroomServer.ts",
+    "service:start": "node dist/server/CutroomServer.mjs",
     "typecheck": "tsc --noEmit",
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },

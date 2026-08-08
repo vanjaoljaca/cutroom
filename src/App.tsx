@@ -421,6 +421,18 @@ export function App() {
   }
 
   const playhead = displayDuration ? `${(displayTime / displayDuration) * 100}%` : "0%";
+  const playerControls = <div className="player-controls">
+    <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={22} /> : <SpeakerHigh size={22} />}</button>
+    <button className="restart-button" aria-label="Play from start" title="Play from start" onClick={playFromStart}><PlayFromStartIcon /></button>
+    <button className="play-button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlayback}>{playing ? <Pause size={28} weight="fill" /> : <Play size={28} weight="fill" />}</button>
+    <span className="time-readout">{formatTime(displayTime)} / {formatTime(displayDuration)}</span>
+    <button aria-label="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={22} /></button>
+  </div>;
+  const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className="viewer" ref={viewerRef}>
+    <video ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
+    {project && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
+    {project && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
+  </div></aside>;
 
   const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={project?.id || null} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
   if (!source.url) return <>{projectRail}<ProjectLanding error={projectError} onOpenProjects={() => setProjectRailOpen(true)} /></>;
@@ -437,46 +449,17 @@ export function App() {
       </header>
 
       <section className="workspace" aria-label="Video editor">
-        <div className="viewer" ref={viewerRef}>
-          <video
-            ref={videoRef}
-            src={source.url}
-            muted={muted}
-            playsInline
-            onLoadedMetadata={handleMetadata}
-            onTimeUpdate={handleTimeUpdate}
-            onSeeked={handleSeeked}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-          />
-          {project && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
-          {project && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
-        </div>
-
-        <div className="mode-switch" aria-label="Timeline view">
-          <button disabled={!ranges.length} title={ranges.length ? "View edited cut" : "No cut has been made yet"} className={mode === "cut" ? "active" : ""} onClick={() => changeMode("cut")}>Edited cut</button>
-          <button className={mode === "original" ? "active" : ""} onClick={() => changeMode("original")}>Original recording</button>
-        </div>
+        <nav className="workflow-steps" aria-label="Editing workflow">
+          <button className={mode === "original" ? "active" : ""} onClick={() => changeMode("original")}><b>1</b><span>Select scenes &amp; takes</span></button>
+          <button disabled={!ranges.length} title={ranges.length ? "Edit the assembled cut" : "No cut has been made yet"} className={mode === "cut" ? "active" : ""} onClick={() => changeMode("cut")}><b>2</b><span>Edit timeline</span></button>
+        </nav>
         {!ranges.length && <p className="no-cut-note">No take selected. Ask the video task to revise this project.</p>}
         {projectError && <p className="analysis-error">{projectError}</p>}
 
-        <div className="player-controls">
-          <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>
-            {muted ? <SpeakerSlash size={22} /> : <SpeakerHigh size={22} />}
-          </button>
-          <button className="restart-button" aria-label="Play from start" title="Play from start" onClick={playFromStart}>
-            <PlayFromStartIcon />
-          </button>
-          <button className="play-button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlayback}>
-            {playing ? <Pause size={28} weight="fill" /> : <Play size={28} weight="fill" />}
-          </button>
-          <span className="time-readout">{formatTime(displayTime)} / {formatTime(displayDuration)}</span>
-          <button aria-label="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={22} /></button>
-        </div>
-
-        {project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onCreateCutout={createSubjectCutout} />}
-
-        <Timeline
+        {mode === "original" && <div className="phase-preview original"><div className="selection-phase">{playerControls}{project && <AnalysisPanel project={project} duration={originalDuration} onSeek={seekTo} onUpdate={updateTake} onSelect={selectTake} onMove={moveScene} />}</div>{videoPreview}</div>}
+        {mode === "cut" && <><div className="phase-preview cut">{videoPreview}</div><div className="edit-phase">{playerControls}
+          {project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onCreateCutout={createSubjectCutout} />}
+          <Timeline
           project={project}
           mode={mode}
           duration={originalDuration}
@@ -505,9 +488,8 @@ export function App() {
           onNudgeClip={nudgeSelectedProgramClip}
           sourceBrowserOpen={sourceBrowserOpen}
           onToggleSources={() => setSourceBrowserOpen((open) => !open)}
-        />
-
-        {project && <AnalysisPanel project={project} duration={originalDuration} onSeek={seekTo} onUpdate={updateTake} onSelect={selectTake} onMove={moveScene} />}
+          />
+        </div></>}
       </section>
     </main>{projectRail}</>
   );
