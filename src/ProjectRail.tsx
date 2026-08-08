@@ -6,6 +6,12 @@ export function ProjectRail({ open, currentProjectId, onClose, onProjectRenamed,
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => { if (open) void refreshProjects(setProjects, setError); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [open, onClose]);
   if (!open) return null;
 
   async function saveName(project: ProjectSummary) {
@@ -36,8 +42,8 @@ export function ProjectRail({ open, currentProjectId, onClose, onProjectRenamed,
     setError("");
   }
 
-  return <aside className="project-rail" aria-label="Projects">
-    <header><strong>Projects</strong><button aria-label="Close projects" title="Close projects" onClick={onClose}><X size={17} /></button></header>
+  return <><button className="project-rail-scrim" aria-label="Dismiss projects" onClick={onClose} /><aside className="project-rail" aria-label="Projects">
+    <header><button className="projects-button rail-projects-button" aria-label="Close projects" title="Close projects" onClick={onClose}><List size={22} weight="bold" /></button><strong>Projects</strong></header>
     <div className="project-list">{projects.map((project) => <section className={project.id === currentProjectId ? "project-row current" : "project-row"} key={project.id}>
       {editingId === project.id ? <form onSubmit={(event) => { event.preventDefault(); void saveName(project); }}><input aria-label={`Name ${displayProjectTitle(project.title)}`} autoFocus maxLength={80} value={draft} onChange={(event) => setDraft(event.target.value)} /><button aria-label="Save project name" disabled={busyId === project.id}><Check size={15} /></button></form> : <a href={canonicalProjectPath(project.id)}><strong>{displayProjectTitle(project.title)}</strong><span>{project.sceneCount} scenes · {project.exportCount} exports</span><small>{project.id === currentProjectId ? "Current · " : ""}Created {projectDate(project.createdAt)}</small></a>}
       <div className="project-row-actions"><button aria-label={`Rename ${displayProjectTitle(project.title)}`} title="Rename" onClick={() => beginRename(project)}><PencilSimple size={14} /></button><button aria-label={`Delete ${displayProjectTitle(project.title)}`} title="Delete" disabled={busyId === project.id} onClick={() => { void removeProject(project); }}><Trash size={14} /></button></div>
@@ -45,7 +51,7 @@ export function ProjectRail({ open, currentProjectId, onClose, onProjectRenamed,
     {!projects.length && !error && <p className="project-list-empty">No projects yet.</p>}
     {error && <p className="project-rail-error" role="alert">{error}</p>}
     <footer><strong>New project</strong><span>Give a source video to a Codex task. It creates and opens the Cutroom project here.</span></footer>
-  </aside>;
+  </aside></>;
 }
 
 async function refreshProjects(setProjects: Dispatch<SetStateAction<ProjectSummary[]>>, setError: Dispatch<SetStateAction<string>>) {
@@ -82,7 +88,7 @@ function projectDate(value: string) {
 type ProjectRailProps = { open: boolean; currentProjectId: string | null; onClose: () => void; onProjectRenamed: (project: VideoProject) => void; onProjectTrashed: (receipt: ProjectTrashReceipt) => void };
 const jsonHeaders = { "content-type": "application/json" };
 
-import { Check, PencilSimple, Trash, X } from "@phosphor-icons/react";
+import { Check, List, PencilSimple, Trash } from "@phosphor-icons/react";
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { ProjectSummary, ProjectTrashReceipt, VideoProject } from "./analysis-model";
 import { displayProjectTitle } from "./ProjectTitle";
