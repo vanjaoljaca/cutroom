@@ -1,0 +1,51 @@
+{
+  "name": "cutroom",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node --experimental-strip-types scripts/BuildCutroomServer.ts && node scripts/prepare-sites-build.mjs",
+    "check": "npm run typecheck && npm run test",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "asset:import": "vite-node scripts/ImportProjectAsset.ts",
+    "asset:remove": "vite-node scripts/RemoveProjectAsset.ts",
+    "bundle:create": "vite-node scripts/CreateImageBundle.ts",
+    "bundle:add": "vite-node scripts/AddImageBundleCandidate.ts",
+    "bundle:remove": "vite-node scripts/RemoveImageBundle.ts",
+    "bundle:select": "vite-node scripts/SelectImageBundleCandidate.ts",
+    "overlay:attach": "vite-node scripts/AttachImageOverlay.ts",
+    "overlay:bundle": "vite-node scripts/AttachBundleToOverlay.ts",
+    "overlay:remove": "vite-node scripts/RemoveProjectOverlay.ts",
+    "pitch:analyze": "vite-node scripts/AnalyzeProjectPitch.ts",
+    "video:create": "vite-node scripts/CreateVideoProject.ts",
+    "video:export": "vite-node scripts/ExportVideo.ts",
+    "media:reference:add": "vite-node scripts/AddReferenceMedia.ts",
+    "media:reference:regenerate": "vite-node scripts/RegenerateReferenceMedia.ts",
+    "media:reference:remove": "vite-node scripts/RemoveReferenceMedia.ts",
+    "video:cutout": "vite-node scripts/CreateSubjectCutout.ts",
+    "project:list": "vite-node scripts/ListProjects.ts",
+    "project:load": "vite-node scripts/LoadProject.ts",
+    "project:rename": "vite-node scripts/RenameProject.ts",
+    "project:trash": "vite-node scripts/TrashProject.ts",
+    "service:start": "node --experimental-strip-types scripts/CutroomServer.ts",
+    "typecheck": "tsc --noEmit",
+    "test:sites": "node --test tests/sites-worker.test.mjs"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@vitejs/plugin-react": "5.0.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "vite": "6.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "esbuild": "0.25.12",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  }
+}
