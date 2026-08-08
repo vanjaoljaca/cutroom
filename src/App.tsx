@@ -468,7 +468,7 @@ export function App() {
   return (
     <><main className="editor-shell" onPointerDown={dismissOverlayFromBackground}>
       <header className="editor-header">
-        <div>
+        <div className="header-brand">
           <button className="projects-button" aria-label="Projects" title="Projects" aria-expanded={projectRailOpen} onClick={() => setProjectRailOpen((current) => !current)}><List size={22} weight="bold" /></button>
           <span className="wordmark">Cutroom</span>
           <span className="file-name">{displayProjectTitle(project?.title || source.name)}</span>
@@ -537,7 +537,7 @@ function PlayFromStartIcon() {
 function ProjectLanding({ error, onOpenProjects }: { error: string; onOpenProjects: () => void }) {
   return (
     <main className="empty-editor">
-      <div className="empty-header"><span className="empty-header-brand"><button className="projects-button" aria-label="Projects" title="Projects" onClick={onOpenProjects}><List size={22} weight="bold" /></button><span className="wordmark">Cutroom</span></span></div>
+      <div className="empty-header"><span className="header-brand"><button className="projects-button" aria-label="Projects" title="Projects" onClick={onOpenProjects}><List size={22} weight="bold" /></button><span className="wordmark">Cutroom</span></span></div>
       <section className="empty-state">
         <div className="empty-frame"><FilmStrip size={34} /></div>
         <div className="empty-title"><h1>No project open</h1></div>

@@ -38,7 +38,7 @@ button:focus-visible,
 .projects-button svg { display: block; }
 .projects-button:hover, .projects-button:focus-visible { color: #f0c84b; background: #202320; outline: 1px solid #4c504b; }
 .file-name { color: #8f938e; font-size: 13px; margin-left: 16px; }
-.empty-header-brand { display: inline-flex; align-items: center; }
+.header-brand { display: flex; align-items: center; }
 
 .text-action,
 .player-controls button,
