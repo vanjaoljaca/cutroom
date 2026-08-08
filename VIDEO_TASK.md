@@ -29,7 +29,7 @@ Import each candidate with its own attribution, create one stable bundle, add ca
 npm run asset:import -- --project <project-id> --source /absolute/candidate-1.png \
   --label "Candidate 1" --source-url "https://source.example/image" \
   --attribution "Creator name" --license "License or usage note"
-npm run bundle:create -- --project <project-id> --label "Motte and bailey options" \
+npm run bundle:create -- --project <project-id> --label "Motte and bailey" \
   --source-url "https://search-or-reference.example" --attribution "Candidate sources stored per asset"
 npm run bundle:add -- --project <project-id> --bundle <bundle-id> --asset <candidate-1-asset-id>
 # Repeat bundle:add for candidates 2–5 in the desired order.
@@ -38,13 +38,13 @@ npm run overlay:attach -- --project <project-id> --bundle <bundle-id> \
   --placement avoid-face-left --width 0.5 --layer 10 --label "Motte and bailey"
 ```
 
-The first added candidate becomes selected. Change it headlessly with:
+The bundle label names the editorial idea, not the chooser UI; do not append words such as “options” or “candidates.” The first added candidate becomes selected. Change it headlessly with:
 
 ```sh
 npm run bundle:select -- --project <project-id> --bundle <bundle-id> --asset <candidate-asset-id>
 ```
 
-Candidate selection updates the bundle and every attached overlay's `assetId` in one validated atomic project write. The Cutroom image lane shows the ordered candidates as directly clickable thumbnails; switching a candidate preserves timing, placement, size, opacity, and layer.
+Candidate selection updates the bundle and every attached overlay's `assetId` in one validated atomic project write. Clicking the labeled image clip opens its candidate thumbnails in a contextual popover; switching a candidate preserves timing, placement, size, opacity, and layer.
 
 To attach a bundle to an existing overlay without changing its timing or layout:
 
