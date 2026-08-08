@@ -10,6 +10,12 @@ describe("proportional overlay resize", () => {
     expect(proportionalOverlaySize({ ...start, height: null }, 10_000, 10_000)).toEqual({ width: 0.95, height: null });
     expect(proportionalOverlaySize(start, -10_000, -10_000)).toEqual({ width: 0.08, height: 0.05333333333333334 });
   });
+
+  it("scales keyboard resizing proportionally", () => {
+    const size = scaleOverlaySize({ width: 0.3, height: 0.2 }, 1 + 0.02 / 0.3);
+    expect(size.width).toBeCloseTo(0.32);
+    expect(size.height).toBeCloseTo(0.213333);
+  });
 });
 
 function sizeAt(deltaX: number, deltaY: number) {
@@ -18,4 +24,4 @@ function sizeAt(deltaX: number, deltaY: number) {
 
 const start = { clientX: 100, clientY: 100, pixelWidth: 200, pixelHeight: 100, width: 0.3, height: 0.2 };
 
-import { proportionalOverlaySize } from "./OverlayResizeModel";
+import { proportionalOverlaySize, scaleOverlaySize } from "./OverlayResizeModel";

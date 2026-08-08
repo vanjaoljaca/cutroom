@@ -96,8 +96,8 @@ function EditableOverlay({ overlay, projectId, visible, selected, onSelect, onCh
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
     event.stopPropagation();
-    const width = clamp(overlay.layout.width + (event.key === "ArrowLeft" ? -0.02 : 0.02), 0.08, 0.95);
-    onChange(overlay.id, { ...overlay.layout, width }, true);
+    const delta = event.key === "ArrowLeft" ? -0.02 : 0.02;
+    onChange(overlay.id, { ...overlay.layout, ...scaleOverlaySize(overlay.layout, 1 + delta / overlay.layout.width) }, true);
   }
   const style = overlayFrameStyle(overlay, visible);
   return <div className={`image-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={style}><button className="overlay-move-surface" tabIndex={visible ? 0 : -1} aria-label={`Move ${overlay.label} on video`} onClick={() => onSelect(overlay.id)} onKeyDown={nudge} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><img decoding="async" draggable={false} src={`/api/projects/${projectId}/assets/${overlay.assetId}`} alt={overlay.label} /></button><button className="overlay-resize-handle" aria-label={`Resize ${overlay.label}`} onKeyDown={resizeNudge} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} /></div>;
@@ -145,4 +145,4 @@ import type { ImageAsset, ImageOverlay, OverlayLayout, VideoProject } from "./an
 import { cutDuration, formatTime, type SourceRange, type ViewMode } from "./editor-model";
 import { imageOverlayCutIntervals, visibleImageOverlays, type ImageOverlayCutInterval } from "./overlay-model";
 import { compositingLaneOrder } from "./CompositingLaneModel";
-import { proportionalOverlaySize } from "./OverlayResizeModel";
+import { proportionalOverlaySize, scaleOverlaySize } from "./OverlayResizeModel";
