@@ -69,7 +69,7 @@ button:focus-visible,
 .phase-preview.cut .viewer { width: min(46vh, 430px); max-width: 430px; }
 .project-rail-scrim { position: fixed; z-index: 39; inset: 0; padding: 0; border: 0; background: rgb(0 0 0 / 28%); cursor: default; }
 .project-rail { width: min(292px, 88vw); position: fixed; z-index: 40; inset: 0 auto 0 0; display: grid; grid-template-rows: 58px minmax(0, 1fr) auto auto; color: #dfe2dc; background: #151715; border-right: 1px solid #3a3d3a; box-shadow: 12px 0 32px rgb(0 0 0 / 42%); }
-.project-rail > header { display: grid; grid-template-columns: 44px 1fr; align-items: center; padding: 0 14px 0 24px; border-bottom: 1px solid #303330; }
+.project-rail > header { min-height: 58px; display: flex; align-items: center; padding: 0 24px; border-bottom: 1px solid #303330; }
 .project-rail > header .rail-projects-button { margin: 0 14px 0 0; padding: 0; }
 .project-row-actions button, .project-row form button { display: grid; place-items: center; padding: 5px; border: 0; color: #999e97; background: transparent; cursor: pointer; }
 .project-list { min-height: 0; overflow-y: auto; }
