@@ -1,6 +1,10 @@
 # Cutroom
 
-Cutroom is an experimental, local-first video editor designed to be driven by a Codex task while keeping the edit state inspectable in a browser.
+Cutroom is an experimental, local-first video editor driven by Codex. Record yourself directing the edit and performing each take in a single video; Cutroom interprets the directions, selects and assembles the takes, and gives you a finished video to review.
+
+![Cutroom editing a portrait performance into detected scenes and takes](docs/images/cutroom-editor.jpg)
+
+_Demo footage: [“Vertical Video of a Woman Dancing”](https://www.pexels.com/video/vertical-video-of-a-woman-dancing-5805069/) by Tima Miroshnichenko, used under the [Pexels License](https://www.pexels.com/license/)._
 
 The current build provides:
 
