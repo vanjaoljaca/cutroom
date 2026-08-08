@@ -67,8 +67,9 @@ function EditableOverlay({ overlay, projectId, visible, selected, onSelect, onCh
   function begin(event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode) {
     event.stopPropagation();
     const bounds = event.currentTarget.closest(".viewer")?.getBoundingClientRect();
-    if (!bounds) return;
-    drag.current = { mode, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, x: overlay.layout.x, y: overlay.layout.y, overlayWidth: overlay.layout.width };
+    const overlayBounds = event.currentTarget.closest(".image-overlay-item")?.getBoundingClientRect();
+    if (!bounds || !overlayBounds) return;
+    drag.current = { mode, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, x: overlay.layout.x, y: overlay.layout.y, overlayWidth: overlay.layout.width, overlayHeight: overlay.layout.height, pixelWidth: overlayBounds.width, pixelHeight: overlayBounds.height };
     event.currentTarget.setPointerCapture(event.pointerId);
     onSelect(overlay.id);
   }
@@ -105,7 +106,7 @@ function EditableOverlay({ overlay, projectId, visible, selected, onSelect, onCh
 function changedLayout(layout: OverlayLayout, drag: LayoutDrag, clientX: number, clientY: number): OverlayLayout {
   const deltaX = (clientX - drag.clientX) / drag.width;
   const deltaY = (clientY - drag.clientY) / drag.height;
-  if (drag.mode === "resize") return { ...layout, width: clamp(drag.overlayWidth + deltaX, 0.08, 0.95) };
+  if (drag.mode === "resize") return { ...layout, ...proportionalOverlaySize({ clientX: drag.clientX, clientY: drag.clientY, pixelWidth: drag.pixelWidth, pixelHeight: drag.pixelHeight, width: drag.overlayWidth, height: drag.overlayHeight }, clientX, clientY) };
   return { ...layout, x: clamp(drag.x + deltaX, 0, 1), y: clamp(drag.y + deltaY, 0, 1), placementIntent: "explicit" };
 }
 
@@ -131,7 +132,7 @@ const anchorTransform = { "top-left": "none", "top-right": "translateX(-100%)", 
 type TimingDragMode = "move" | "start" | "end";
 type LayoutDragMode = "move" | "resize";
 type TimingDrag = { mode: TimingDragMode; left: number; width: number; pointer: number; start: number; end: number; nextStart: number; nextEnd: number };
-type LayoutDrag = { mode: LayoutDragMode; clientX: number; clientY: number; width: number; height: number; x: number; y: number; overlayWidth: number };
+type LayoutDrag = { mode: LayoutDragMode; clientX: number; clientY: number; width: number; height: number; x: number; y: number; overlayWidth: number; overlayHeight: number | null; pixelWidth: number; pixelHeight: number };
 type OverlayTimingChange = (id: string, start: number, end: number, commit: boolean) => void;
 type OverlayLayoutChange = (id: string, layout: OverlayLayout, commit: boolean) => void;
 type ImageOverlayTracksProps = { project: VideoProject; ranges: SourceRange[]; playhead: string; selectedId: string | null; onSelect: (id: string, start: number) => void; onTimingChange: OverlayTimingChange; onCandidateSelect: (bundleId: string, assetId: string) => void };
@@ -144,3 +145,4 @@ import type { ImageAsset, ImageOverlay, OverlayLayout, VideoProject } from "./an
 import { cutDuration, formatTime, type SourceRange, type ViewMode } from "./editor-model";
 import { imageOverlayCutIntervals, visibleImageOverlays, type ImageOverlayCutInterval } from "./overlay-model";
 import { compositingLaneOrder } from "./CompositingLaneModel";
+import { proportionalOverlaySize } from "./OverlayResizeModel";

@@ -20,8 +20,9 @@ function EditableCutout({ projectId, interval, cutTime, playing, visible, select
   function begin(event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode) {
     event.stopPropagation();
     const bounds = event.currentTarget.closest(".viewer")?.getBoundingClientRect();
-    if (!bounds) return;
-    drag.current = { mode, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, x: interval.overlay.layout.x, y: interval.overlay.layout.y, overlayWidth: interval.overlay.layout.width };
+    const overlayBounds = event.currentTarget.closest(".cutout-overlay-item")?.getBoundingClientRect();
+    if (!bounds || !overlayBounds) return;
+    drag.current = { mode, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, x: interval.overlay.layout.x, y: interval.overlay.layout.y, overlayWidth: interval.overlay.layout.width, overlayHeight: interval.overlay.layout.height, pixelWidth: overlayBounds.width, pixelHeight: overlayBounds.height };
     event.currentTarget.setPointerCapture(event.pointerId);
     onSelect(interval.overlay.id);
   }
@@ -87,7 +88,7 @@ async function synchronizeCutout(video: HTMLVideoElement | null, localTime: numb
 function changedLayout(layout: OverlayLayout, drag: LayoutDrag, clientX: number, clientY: number): OverlayLayout {
   const deltaX = (clientX - drag.clientX) / drag.width;
   const deltaY = (clientY - drag.clientY) / drag.height;
-  if (drag.mode === "resize") return { ...layout, width: clamp(drag.overlayWidth + deltaX, 0.08, 0.95) };
+  if (drag.mode === "resize") return { ...layout, ...proportionalOverlaySize({ clientX: drag.clientX, clientY: drag.clientY, pixelWidth: drag.pixelWidth, pixelHeight: drag.pixelHeight, width: drag.overlayWidth, height: drag.overlayHeight }, clientX, clientY) };
   return { ...layout, x: clamp(drag.x + deltaX, 0, 1), y: clamp(drag.y + deltaY, 0, 1), placementIntent: "explicit" };
 }
 
@@ -101,7 +102,7 @@ const minimumDuration = 0.08;
 const anchorTransform = { "top-left": "none", "top-right": "translateX(-100%)", center: "translate(-50%, -50%)", "bottom-left": "translateY(-100%)", "bottom-right": "translate(-100%, -100%)" };
 type LayoutDragMode = "move" | "resize";
 type TimingDragMode = "move" | "start" | "end";
-type LayoutDrag = { mode: LayoutDragMode; clientX: number; clientY: number; width: number; height: number; x: number; y: number; overlayWidth: number };
+type LayoutDrag = { mode: LayoutDragMode; clientX: number; clientY: number; width: number; height: number; x: number; y: number; overlayWidth: number; overlayHeight: number | null; pixelWidth: number; pixelHeight: number };
 type TimingDrag = { mode: TimingDragMode; left: number; width: number; pointer: number; start: number; end: number };
 type LayoutChange = (id: string, layout: OverlayLayout, commit: boolean) => void;
 type TimingChange = (id: string, start: number, end: number, commit: boolean) => void;
@@ -116,3 +117,4 @@ import { cutDuration, type SourceRange, type ViewMode } from "./editor-model";
 import { cutoutProgramIntervals, type CutoutProgramInterval } from "./CutoutOverlayModel";
 import { programRanges } from "./ProgramTimelineModel";
 import { compositingLaneOrder } from "./CompositingLaneModel";
+import { proportionalOverlaySize } from "./OverlayResizeModel";
