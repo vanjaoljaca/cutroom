@@ -66,7 +66,7 @@ button:focus-visible,
 .selection-phase, .edit-phase { min-width: 0; }
 .viewer-column { min-width: 0; position: sticky; top: 76px; display: grid; justify-items: end; }
 .phase-preview.cut .viewer-column { position: static; justify-items: center; }
-.phase-preview.cut .viewer { width: min(46vh, 430px); max-width: 430px; }
+.phase-preview.cut .viewer { width: min(20vh, 190px); max-width: 190px; }
 .project-rail-scrim { position: fixed; z-index: 39; inset: 0; padding: 0; border: 0; background: rgb(0 0 0 / 28%); cursor: default; }
 .project-rail { width: min(292px, 88vw); position: fixed; z-index: 40; inset: 0 auto 0 0; display: grid; grid-template-rows: 58px minmax(0, 1fr) auto auto; color: #dfe2dc; background: #151715; border-right: 1px solid #3a3d3a; box-shadow: 12px 0 32px rgb(0 0 0 / 42%); }
 .project-rail > header { min-height: 58px; display: flex; align-items: center; padding: 0 24px; border-bottom: 1px solid #303330; }
@@ -117,18 +117,17 @@ button:focus-visible,
 .viewer:fullscreen video { width: auto; max-width: 100%; }
 
 .workflow-steps {
-  width: min(100%, 680px);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 22px;
-  margin: 0 0 16px;
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: #555a54;
 }
 
-.workflow-steps button { position: relative; min-width: 0; display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 8px; padding: 8px 0 10px; color: #777c76; border: 0; border-bottom: 2px solid #303330; background: transparent; cursor: pointer; text-align: left; }
-.workflow-steps button + button::before { position: absolute; left: -17px; color: #555a54; content: "→"; }
-.workflow-steps b { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 10px; }
-.workflow-steps span { font-size: 12px; font-weight: 650; }
-.workflow-steps button.active { color: #f0c84b; border-color: #f0c84b; }
+.workflow-steps button { width: 28px; height: 26px; display: grid; place-items: center; padding: 0; color: #777c76; border: 1px solid #303330; border-radius: 3px; background: transparent; cursor: pointer; }
+.workflow-steps button.active { color: #f0c84b; border-color: #8b7837; background: #201e15; }
+.workflow-steps button:hover, .workflow-steps button:focus-visible { color: #f0c84b; border-color: #64695f; }
 .workflow-steps button:disabled { color: #4f534e; cursor: not-allowed; }
 .no-cut-note { margin: 8px 0 0; color: #81857f; font-size: 12px; text-align: center; }
 .analysis-error { color: #ef8f85; font-size: 13px; }
@@ -142,7 +141,8 @@ button:focus-visible,
   gap: 4px;
 }
 .selection-phase > .player-controls { margin-top: 0; }
-.edit-phase { margin-top: 14px; }
+.edit-phase { margin-top: 4px; }
+.edit-phase > .player-controls { margin-bottom: 8px; }
 
 .player-controls button { height: 42px; display: grid; place-items: center; color: #c6c9c3; }
 .player-controls button:first-child { justify-self: start; }
@@ -408,8 +408,7 @@ button:focus-visible,
   .editor-header { padding: 0 14px; }
   .file-name { display: none; }
   .workspace { padding: 14px 12px 18px; }
-  .workflow-steps { width: 100%; gap: 16px; }
-  .workflow-steps button + button::before { left: -13px; }
+  .workflow-steps { width: max-content; gap: 6px; }
   .phase-preview.original { grid-template-columns: 1fr; gap: 14px; }
   .selection-phase { grid-row: 2; }
   .viewer-column { grid-row: 1; position: static; justify-items: center; }

@@ -478,8 +478,9 @@ export function App() {
 
       <section className="workspace" aria-label="Video editor">
         <nav className="workflow-steps" aria-label="Editing workflow">
-          <button className={mode === "original" ? "active" : ""} onClick={() => changeMode("original")}><b>1</b><span>Select scenes &amp; takes</span></button>
-          <button disabled={!ranges.length} title={ranges.length ? "Edit the assembled cut" : "No cut has been made yet"} className={mode === "cut" ? "active" : ""} onClick={() => changeMode("cut")}><b>2</b><span>Edit timeline</span></button>
+          <button aria-label="Select scenes and takes" aria-current={mode === "original" ? "step" : undefined} title="Select scenes and takes" className={mode === "original" ? "active" : ""} onClick={() => changeMode("original")}><ListChecks size={16} weight="bold" /></button>
+          <ArrowRight size={12} weight="bold" aria-hidden="true" />
+          <button aria-label="Edit timeline" aria-current={mode === "cut" ? "step" : undefined} disabled={!ranges.length} title={ranges.length ? "Edit timeline" : "No cut has been made yet"} className={mode === "cut" ? "active" : ""} onClick={() => changeMode("cut")}><Scissors size={16} weight="bold" /></button>
         </nav>
         {!ranges.length && <p className="no-cut-note">No take selected. Ask the video task to revise this project.</p>}
         {projectError && <p className="analysis-error">{projectError}</p>}
@@ -889,7 +890,7 @@ type PendingMediaLoad = { time: number; rangeIndex: number; play: boolean };
 type TakePreview = { sceneId: string; takeId: string; start: number; end: number };
 const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 
-import { ArrowsOut, Export as ExportIcon, FilmStrip, List, Pause, Play, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
+import { ArrowRight, ArrowsOut, Export as ExportIcon, FilmStrip, List, ListChecks, Pause, Play, Scissors, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
 import type { CutProposal, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, SceneProposal, TakeProposal, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
