@@ -116,6 +116,7 @@ button:focus-visible,
 .viewer:fullscreen { display: grid; place-items: center; background: #000; border: 0; }
 .viewer:fullscreen video { width: auto; max-width: 100%; }
 
+.workflow-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .workflow-steps {
   width: max-content;
   display: flex;
@@ -129,6 +130,8 @@ button:focus-visible,
 .workflow-steps button.active { color: #f0c84b; border-color: #8b7837; background: #201e15; }
 .workflow-steps button:hover, .workflow-steps button:focus-visible { color: #f0c84b; border-color: #64695f; }
 .workflow-steps button:disabled { color: #4f534e; cursor: not-allowed; }
+.add-media-button { height: 27px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; color: #c8cbc5; border: 1px solid #3a3d3a; border-radius: 3px; background: #181a18; cursor: pointer; font-size: 10px; }
+.add-media-button:hover, .add-media-button:focus-visible, .add-media-button[aria-expanded="true"] { color: #f0c84b; border-color: #6a6038; }
 .no-cut-note { margin: 8px 0 0; color: #81857f; font-size: 12px; text-align: center; }
 .analysis-error { color: #ef8f85; font-size: 13px; }
 
@@ -155,8 +158,6 @@ button:focus-visible,
 .timeline-heading,
 .timeline-scale { display: flex; justify-content: space-between; color: #a4a8a2; font-size: 12px; }
 .timeline-heading { min-height: 24px; justify-content: flex-end; margin-bottom: 4px; color: #dedfdc; }
-.sources-toggle { padding: 2px 7px; border: 1px solid #3a3d3a; border-radius: 10px; color: #8f938e; background: transparent; cursor: pointer; font-size: 10px; }
-.sources-toggle.active { color: #151610; border-color: #f0c84b; background: #f0c84b; }
 .timeline-heading-actions { display: flex; align-items: center; gap: 10px; }
 .timeline-settings { position: relative; }
 .timeline-settings > button { width: 26px; height: 24px; display: grid; place-items: center; padding: 0; color: #9da19b; border: 1px solid #3a3d3a; border-radius: 3px; background: #151715; cursor: pointer; }
@@ -192,7 +193,9 @@ button:focus-visible,
 
 .analysis-panel { margin-top: 14px; border: 1px solid #303330; background: #151715; }
 
-.source-browser { width: min(920px, calc(100vw - 40px)); margin: 14px auto 4px; border-top: 1px solid #353835; border-bottom: 1px solid #353835; background: #121412; }
+.source-browser-modal { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 24px; }
+.source-browser-scrim { position: absolute; inset: 0; padding: 0; border: 0; background: rgb(4 5 4 / 72%); backdrop-filter: blur(3px); cursor: default; }
+.source-browser { width: min(920px, calc(100vw - 40px)); max-height: calc(100vh - 48px); position: relative; z-index: 1; overflow-y: auto; border: 1px solid #454945; background: #121412; box-shadow: 0 24px 70px rgb(0 0 0 / 65%); }
 .source-browser > header { min-height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
 .source-browser > header div { display: grid; gap: 2px; }
 .source-browser > header span { color: #858a83; font-size: 10px; }

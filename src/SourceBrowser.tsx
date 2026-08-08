@@ -8,6 +8,12 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
   const [placement, setPlacement] = useState<SourcePlacement>(selectedClipId ? "after" : "end");
   const videoRef = useRef<HTMLVideoElement>(null);
   const source = project.mediaLibrary.sources.find((candidate) => candidate.id === sourceId) || project.mediaLibrary.sources[0];
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [open, onClose]);
   if (!open) return null;
 
   function loaded() {
@@ -32,9 +38,9 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
     if (selectedClipId) onCreateCutout(source, markIn, markOut, selectedClipId);
   }
 
-  return <section className="source-browser" aria-label="Media sources">
-    <header><div><strong>Sources</strong><span>Mark a section, then insert it into the movie.</span></div><button aria-label="Close sources" title="Close sources" onClick={onClose}><X size={17} /></button></header>
-    <div className="source-tabs" role="tablist" aria-label="Available media sources">{project.mediaLibrary.sources.map((candidate) => <button role="tab" aria-selected={candidate.id === source.id} key={candidate.id} onClick={() => changeSource(candidate.id)}><strong>{candidate.label}</strong><small>{candidate.role === "reference" ? "Reference" : "Recording"}</small></button>)}</div>
+  return <div className="source-browser-modal"><button className="source-browser-scrim" aria-label="Dismiss add media" onClick={onClose} /><section className="source-browser" role="dialog" aria-modal="true" aria-label="Add media">
+    <header><div><strong>Add media</strong><span>Mark a section, then insert it into the movie.</span></div><button aria-label="Close add media" title="Close" onClick={onClose}><X size={17} /></button></header>
+    <div className="source-tabs" role="tablist" aria-label="Available media">{project.mediaLibrary.sources.map((candidate) => <button role="tab" aria-selected={candidate.id === source.id} key={candidate.id} onClick={() => changeSource(candidate.id)}><strong>{candidate.label}</strong><small>{candidate.role === "reference" ? "Reference" : "Recording"}</small></button>)}</div>
     <div className="source-workspace">
       <video ref={videoRef} src={`/api/projects/${project.id}/media/${source.id}`} controls playsInline onLoadedMetadata={loaded} onTimeUpdate={() => setPlayhead(videoRef.current?.currentTime || 0)} />
       <div className="source-marking">
@@ -48,7 +54,7 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
         {!references.length && <p>No referenced videos yet. Give a video URL to the Codex video task; it will appear here after it is cached on USB.</p>}
       </div>
     </div>
-  </section>;
+  </section></div>;
 }
 
 function placementIndex(clips: ProgramClip[], selectedId: string | null, placement: SourcePlacement) {
@@ -68,6 +74,6 @@ type SourcePlacement = "start" | "before" | "after" | "end";
 type SourceBrowserProps = { project: VideoProject; open: boolean; selectedClipId: string | null; cutoutStatus: CutoutJobStatus | null; onClose: () => void; onInsert: (source: VideoMediaSource, start: number, end: number, index: number) => void; onCreateCutout: (source: VideoMediaSource, start: number, end: number, targetClipId: string) => void };
 
 import { PersonSimple, Plus, X } from "@phosphor-icons/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ProgramClip, VideoMediaSource, VideoProject } from "./analysis-model";
 import type { CutoutJobStatus } from "./CutoutModel";
