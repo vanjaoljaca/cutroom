@@ -11,7 +11,7 @@ export function PitchGraph({ artifact, mode, ranges, duration, playheadRatio, st
   return <div className="pitch-graph" role="slider" tabIndex={0} aria-label="Pitch over time" aria-valuemin={0} aria-valuemax={Math.round(timelineDuration * 100) / 100} aria-valuenow={Math.round(inspectedRatio * timelineDuration * 100) / 100} onKeyDown={(event) => nudge(event, inspectedRatio, onSeekRatio)}>
     <div className="pitch-graph-heading"><strong>Pitch contour</strong><output>{pitchValue(inspected, status)}</output></div>
     <div className="pitch-chart-row">
-      <div className="pitch-y-axis" aria-hidden="true">{scaleTicks.map((tick) => <span key={tick.midi} style={{ top: `${pitchTickY(tick.midi, domain) / 72 * 100}%` }}>{tick.note} · {Math.round(tick.hz)} Hz</span>)}</div>
+      <div className="pitch-y-axis" aria-label="Pitch in musical notes">{scaleTicks.map((tick) => <span key={tick.midi} style={{ top: `${pitchTickY(tick.midi, domain) / 72 * 100}%` }}>{tick.note}</span>)}</div>
       <div className="pitch-plot" onClick={(event) => seek(event, onSeekRatio)} onPointerMove={(event) => setHoverRatio(pointerRatio(event))} onPointerLeave={() => setHoverRatio(null)}>
         <svg viewBox="0 0 1000 72" preserveAspectRatio="none" aria-hidden="true">
           {scaleTicks.map((tick) => <line className="pitch-grid" key={tick.midi} x1="0" x2="1000" y1={pitchTickY(tick.midi, domain)} y2={pitchTickY(tick.midi, domain)} />)}

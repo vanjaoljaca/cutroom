@@ -210,10 +210,9 @@ export function App() {
     setTakePreview(null);
   }
 
-  async function togglePitch() {
-    const visible = !pitchVisible;
-    setPitchVisible(visible);
-    if (!visible || pitchArtifact || !project) return;
+  async function openPitch() {
+    setPitchVisible(true);
+    if (pitchArtifact || !project) return;
     setPitchStatus(project.pitchAnalysis ? "loading" : "analyzing");
     try {
       setPitchArtifact(await requestPitch(project.id, Boolean(project.pitchAnalysis)));
@@ -471,11 +470,7 @@ export function App() {
           thumbnails={thumbnails}
           waveform={waveform}
           playhead={playhead}
-          pitchVisible={pitchVisible}
-          pitchArtifact={pitchArtifact}
-          pitchStatus={pitchStatus}
-          onTogglePitch={togglePitch}
-          onSeekRatio={seekFromRatio}
+          onViewPitch={openPitch}
           onSeek={seekFromTimeline}
           onTrimEnd={trimTimelineEnd}
           selectedOverlayId={selectedOverlayId}
@@ -491,7 +486,7 @@ export function App() {
           />
         </div></>}
       </section>
-    </main>{project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onCreateCutout={createSubjectCutout} />}{projectRail}</>
+    </main>{project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onCreateCutout={createSubjectCutout} />}{pitchVisible && <PitchPopup artifact={pitchArtifact} mode={mode} ranges={ranges} duration={originalDuration} playheadRatio={displayDuration ? displayTime / displayDuration : 0} status={pitchStatus} onSeekRatio={seekFromRatio} onClose={() => setPitchVisible(false)} />}{projectRail}</>
   );
 }
 
@@ -525,15 +520,14 @@ function ExportNotice({ status, onCancel, onRetry }: ExportNoticeProps) {
   return null;
 }
 
-function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, pitchVisible, pitchArtifact, pitchStatus, onTogglePitch, onSeekRatio, onSeek, onTrimEnd, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
-  const playheadRatio = Number.parseFloat(playhead) / 100 || 0;
+function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, onSeek, onTrimEnd, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
   const timelineDuration = mode === "cut" ? cutDuration(ranges) : duration;
   const canvasWidth = `${timelineCanvasPercent(timelineDuration, timelineWindow)}%`;
   const multiSource = mode === "cut" && new Set(ranges.map((range) => range.sourceId)).size > 1;
   return (
     <section className="timeline-section">
       <div className="timeline-heading">
-        <span className="timeline-heading-actions"><TimelineSettings pitchVisible={pitchVisible} timelineWindow={timelineWindow} onTogglePitch={onTogglePitch} onTimelineWindowChange={onTimelineWindowChange} /><span>{formatTime(timelineDuration)}</span></span>
+        <span className="timeline-heading-actions"><TimelineSettings timelineWindow={timelineWindow} onViewPitch={onViewPitch} onTimelineWindowChange={onTimelineWindowChange} /><span>{formatTime(timelineDuration)}</span></span>
       </div>
       <div className="timeline-viewport">
         <div className="timeline-canvas" style={{ width: canvasWidth }}>
@@ -547,7 +541,6 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
           </div>
           <div className="timeline-auxiliary-scroll">
             <div className="timeline-auxiliary-grid">
-              {pitchVisible && <div className="timeline-wide-track"><PitchGraph artifact={pitchArtifact} mode={mode} ranges={ranges} duration={duration} playheadRatio={playheadRatio} status={pitchStatus} onSeekRatio={onSeekRatio} /></div>}
               {mode === "cut" && project && <ImageOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onOverlayTimingChange} onCandidateSelect={onCandidateSelect} />}
               {mode === "cut" && project && <CutoutOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onCutoutTimingChange} />}
               <div className="timeline-track-label timeline-scale-label" aria-hidden="true" />
@@ -561,7 +554,7 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
   );
 }
 
-function TimelineSettings({ pitchVisible, timelineWindow, onTogglePitch, onTimelineWindowChange }: TimelineSettingsProps) {
+function TimelineSettings({ timelineWindow, onViewPitch, onTimelineWindowChange }: TimelineSettingsProps) {
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -569,7 +562,17 @@ function TimelineSettings({ pitchVisible, timelineWindow, onTogglePitch, onTimel
     document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", dismiss);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismiss); };
   }, []);
-  return <div className="timeline-settings" ref={container}><button aria-label="Timeline settings" title="Timeline settings" aria-expanded={open} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} /></button>{open && <div className="timeline-settings-menu"><label>Width<select aria-label="Timeline width" value={timelineWindow} onChange={(event) => onTimelineWindowChange(event.target.value as TimelineWindow)}><option value="auto">Auto</option><option value="15">15s</option><option value="60">1 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><label className="pitch-setting"><input type="checkbox" checked={pitchVisible} onChange={onTogglePitch} />Show pitch</label></div>}</div>;
+  const viewPitch = () => { setOpen(false); onViewPitch(); };
+  return <div className="timeline-settings" ref={container}><button aria-label="Timeline settings" title="Timeline settings" aria-expanded={open} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} /></button>{open && <div className="timeline-settings-menu"><label>Width<select aria-label="Timeline width" value={timelineWindow} onChange={(event) => onTimelineWindowChange(event.target.value as TimelineWindow)}><option value="auto">Auto</option><option value="15">15s</option><option value="60">1 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><button className="view-pitch" onClick={viewPitch}>View pitch</button></div>}</div>;
+}
+
+function PitchPopup({ artifact, mode, ranges, duration, playheadRatio, status, onSeekRatio, onClose }: PitchPopupProps) {
+  useEffect(() => {
+    const dismiss = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [onClose]);
+  return <div className="pitch-popup"><button className="pitch-popup-scrim" aria-label="Dismiss pitch" onClick={onClose} /><section className="pitch-popup-panel" role="dialog" aria-modal="true" aria-label="Pitch"><header><strong>Pitch</strong><button aria-label="Close pitch" title="Close pitch" onClick={onClose}><X size={17} /></button></header><PitchGraph artifact={artifact} mode={mode} ranges={ranges} duration={duration} playheadRatio={playheadRatio} status={status} onSeekRatio={onSeekRatio} /></section></div>;
 }
 
 function TrackPlayhead({ playhead }: { playhead: string }) {
@@ -861,7 +864,7 @@ function useWaveformExtraction(source: string, setWaveform: Dispatch<SetStateAct
 }
 
 type SourceState = { name: string; url: string; objectUrl: boolean };
-type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; pitchVisible: boolean; pitchArtifact: PitchArtifact | null; pitchStatus: PitchStatus; onTogglePitch: () => void; onSeekRatio: (ratio: number) => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrimEnd: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
+type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrimEnd: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
 type ExportNoticeProps = { status: ExportJobStatus | null; onCancel: () => void; onRetry: () => void };
 type AnalysisPanelProps = { project: VideoProject; duration: number; previewTakeId: string | null; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onPreview: (sceneId: string, takeId: string) => void };
 type SceneRowsProps = Omit<AnalysisPanelProps, "project"> & { scene: SceneProposal };
@@ -869,13 +872,14 @@ type TakeRowProps = Pick<AnalysisPanelProps, "duration" | "onUpdate" | "onSelect
 type TimelineTrimHandler = (clipId: string, end: number, commit: boolean) => void;
 type TimelineTrimHandleProps = { range: SourceRange; before: number; minimum: number; total: number; onPreview: (preview: TimelineTrimPreview | null) => void; onTrimEnd: TimelineTrimHandler };
 type TimelineTrimDrag = { left: number; width: number; before: number; minimum: number; total: number; maximum: number; next: number };
-type TimelineSettingsProps = { pitchVisible: boolean; timelineWindow: TimelineWindow; onTogglePitch: () => void; onTimelineWindowChange: (window: TimelineWindow) => void };
+type TimelineSettingsProps = { timelineWindow: TimelineWindow; onViewPitch: () => void; onTimelineWindowChange: (window: TimelineWindow) => void };
+type PitchPopupProps = { artifact: PitchArtifact | null; mode: ViewMode; ranges: SourceRange[]; duration: number; playheadRatio: number; status: PitchStatus; onSeekRatio: (ratio: number) => void; onClose: () => void };
 type TimelineToolboxProps = { project: VideoProject; selectedId: string | null; onRemove: () => void };
 type PendingMediaLoad = { time: number; rangeIndex: number; play: boolean };
 type TakePreview = { sceneId: string; takeId: string; start: number; end: number };
 const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 
-import { ArrowRight, ArrowsOut, Export as ExportIcon, FilmStrip, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash } from "@phosphor-icons/react";
+import { ArrowRight, ArrowsOut, Export as ExportIcon, FilmStrip, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
 import type { CutProposal, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, SceneProposal, TakeProposal, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
