@@ -42,6 +42,7 @@ button:focus-visible,
 
 .text-action,
 .player-controls button,
+.preview-utility-controls button,
 .mode-switch button {
   color: inherit;
   border: 0;
@@ -65,8 +66,11 @@ button:focus-visible,
 .phase-preview.cut { display: grid; justify-items: center; }
 .selection-phase, .edit-phase { min-width: 0; }
 .viewer-column { min-width: 0; position: sticky; top: 76px; display: grid; justify-items: end; }
-.phase-preview.cut .viewer-column { position: static; justify-items: center; }
+.phase-preview.cut .viewer-column { width: 100%; position: relative; top: auto; justify-items: center; }
 .phase-preview.cut .viewer { width: min(20vh, 190px); max-width: 190px; }
+.preview-utility-controls { position: absolute; z-index: 4; top: 0; right: 0; display: grid; gap: 6px; }
+.preview-utility-controls button { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; color: #aeb2ac; border: 1px solid #3a3d3a; border-radius: 3px; background: #171917; cursor: pointer; }
+.preview-utility-controls button:hover, .preview-utility-controls button:focus-visible { color: #f0c84b; border-color: #6a6038; }
 .project-rail-scrim { position: fixed; z-index: 39; inset: 0; padding: 0; border: 0; background: rgb(0 0 0 / 28%); cursor: default; }
 .project-rail { width: min(292px, 88vw); position: fixed; z-index: 40; inset: 0 auto 0 0; display: grid; grid-template-rows: 58px minmax(0, 1fr) auto auto; color: #dfe2dc; background: #151715; border-right: 1px solid #3a3d3a; box-shadow: 12px 0 32px rgb(0 0 0 / 42%); }
 .project-rail > header { min-height: 58px; display: flex; align-items: center; padding: 0 24px; border-bottom: 1px solid #303330; }
@@ -138,9 +142,9 @@ button:focus-visible,
 .player-controls {
   width: 100%;
   margin: 4px 0 16px;
-  display: grid;
-  grid-template-columns: 1fr auto auto auto 1fr;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 .selection-phase > .player-controls { margin-top: 0; }
@@ -148,8 +152,6 @@ button:focus-visible,
 .edit-phase > .player-controls { margin-bottom: 8px; }
 
 .player-controls button { height: 42px; display: grid; place-items: center; color: #c6c9c3; }
-.player-controls button:first-child { justify-self: start; }
-.player-controls button:last-child { justify-self: end; }
 .player-controls .restart-button { color: #9da19b; }
 .player-controls .play-button { color: #f5f2eb; }
 .time-readout { font-size: 14px; font-variant-numeric: tabular-nums; text-align: center; }
@@ -423,7 +425,7 @@ button:focus-visible,
   .workflow-steps { width: max-content; gap: 6px; }
   .phase-preview.original { grid-template-columns: 1fr; gap: 14px; }
   .selection-phase { grid-row: 2; }
-  .viewer-column { grid-row: 1; position: static; justify-items: center; }
+  .viewer-column { grid-row: 1; position: relative; top: auto; justify-items: center; }
   .viewer { width: min(52vh, 78vw); }
   .timeline { height: 92px; }
   .timeline-program-grid, .timeline-auxiliary-grid { grid-template-columns: 52px minmax(0, 1fr); }

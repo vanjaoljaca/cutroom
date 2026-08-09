@@ -425,17 +425,15 @@ export function App() {
 
   const playhead = displayDuration ? `${(displayTime / displayDuration) * 100}%` : "0%";
   const playerControls = <div className="player-controls">
-    <button aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={22} /> : <SpeakerHigh size={22} />}</button>
     <button className="restart-button" aria-label="Play from start" title="Play from start" onClick={playFromStart}><PlayFromStartIcon /></button>
     <button className="play-button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlayback}>{playing ? <Pause size={28} weight="fill" /> : <Play size={28} weight="fill" />}</button>
     <span className="time-readout">{formatTime(displayTime)} / {formatTime(displayDuration)}</span>
-    <button aria-label="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={22} /></button>
   </div>;
   const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className="viewer" ref={viewerRef}>
     <video ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
     {project && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
     {project && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
-  </div></aside>;
+  </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
 
   const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={project?.id || null} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
   if (!source.url) return <>{projectRail}<ProjectLanding error={projectError} onOpenProjects={() => setProjectRailOpen(true)} /></>;
