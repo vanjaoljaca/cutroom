@@ -254,10 +254,10 @@ export function App() {
     seekTo(value);
   }
 
-  function trimTimelineEnd(clipId: string, value: number, commit: boolean) {
-    updateProgramClipTrim(clipId, "end", value, commit);
+  function trimTimelineClip(clipId: string, edge: "start" | "end", value: number, commit: boolean) {
+    updateProgramClipTrim(clipId, edge, value, commit);
     seekTo(value);
-    if (commit) logEvent("timeline_trim_committed", { clipId, end: value });
+    if (commit) logEvent("timeline_trim_committed", { clipId, edge, value });
   }
 
   function applyTakeTrim(sceneId: string, takeId: string, edge: "start" | "end", value: number, persist: boolean) {
@@ -470,7 +470,7 @@ export function App() {
           playhead={playhead}
           onViewPitch={openPitch}
           onSeek={seekFromTimeline}
-          onTrimEnd={trimTimelineEnd}
+          onTrim={trimTimelineClip}
           selectedOverlayId={selectedOverlayId}
           onSelectOverlay={showOverlay}
           onOverlayTimingChange={changeOverlayTiming}
@@ -518,7 +518,7 @@ function ExportNotice({ status, onCancel, onRetry }: ExportNoticeProps) {
   return null;
 }
 
-function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, onSeek, onTrimEnd, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
+function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
   const timelineDuration = mode === "cut" ? cutDuration(ranges) : duration;
   const canvasWidth = `${timelineCanvasPercent(timelineDuration, timelineWindow)}%`;
   const multiSource = mode === "cut" && new Set(ranges.map((range) => range.sourceId)).size > 1;
@@ -533,7 +533,7 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
             <div className="timeline-track-label program-track-label">{mode === "cut" ? "Program" : "Recording"}</div>
             <div className={`timeline ${mode} timeline-track-content`} role="slider" tabIndex={0} aria-label="Video timeline" onClick={onSeek}>
               {multiSource ? <ProgramMediaStrip ranges={ranges} /> : <><ThumbnailStrip thumbnails={thumbnails} /><Waveform peaks={waveform} /></>}
-              {mode === "original" ? <SourceHighlights ranges={ranges.filter((range) => range.sourceId === project?.mediaLibrary.primarySourceId)} duration={duration} /> : <CutDividers project={project} ranges={ranges} selectedId={selectedClipId} onSelect={onSelectClip} onTrimEnd={onTrimEnd} />}
+              {mode === "original" ? <SourceHighlights ranges={ranges.filter((range) => range.sourceId === project?.mediaLibrary.primarySourceId)} duration={duration} /> : <CutDividers project={project} ranges={ranges} selectedId={selectedClipId} onSelect={onSelectClip} onTrim={onTrim} />}
               <TrackPlayhead playhead={playhead} />
             </div>
           </div>
@@ -659,22 +659,22 @@ function SourceHighlights({ ranges, duration }: { ranges: SourceRange[]; duratio
   return <>{ranges.map((range) => <span className="source-highlight" key={range.id} style={segmentStyle(range, rangeStyle(range, duration))}><b>{timelineLabel(range)}</b></span>)}</>;
 }
 
-function CutDividers({ project, ranges, selectedId, onSelect, onTrimEnd }: { project: VideoProject | null; ranges: SourceRange[]; selectedId: string | null; onSelect: (id: string) => void; onTrimEnd: TimelineTrimHandler }) {
+function CutDividers({ project, ranges, selectedId, onSelect, onTrim }: { project: VideoProject | null; ranges: SourceRange[]; selectedId: string | null; onSelect: (id: string) => void; onTrim: TimelineTrimHandler }) {
   const [preview, setPreview] = useState<TimelineTrimPreview | null>(null);
   const total = cutDuration(ranges);
-  return <>{timelineTrimPositions(ranges, preview).map(({ range, left, width, shortened }, index) => {
+  return <>{timelineTrimPositions(ranges, preview).map(({ range, left, width, shortened, edge }, index) => {
     const minimum = minimumTakeEnd(project, range);
-    return <span className={`cut-divider ${range.kind === "source" ? "reference" : ""} ${selectedId === range.id ? "selected" : ""} ${shortened > 0 ? "trimming" : ""}`} key={range.id} style={segmentStyle(range, { left: `${left}%`, width: `${width}%` })}><button className="program-clip-label" aria-label={`Select ${timelineLabel(range)}`} onClick={() => onSelect(range.id)}>{timelineLabel(range)}</button>{shortened > 0 && <output className="trim-preview">−{shortened.toFixed(2)}s</output>}<TimelineTrimHandle range={range} before={cutDuration(ranges.slice(0, index))} minimum={minimum} total={total} onPreview={setPreview} onTrimEnd={onTrimEnd} /></span>;
+    return <span className={`cut-divider ${range.kind === "source" ? "reference" : ""} ${selectedId === range.id ? "selected" : ""} ${shortened > 0 ? "trimming" : ""}`} key={range.id} style={segmentStyle(range, { left: `${left}%`, width: `${width}%` })}><button className="program-clip-label" aria-label={`Select ${timelineLabel(range)}`} onClick={() => onSelect(range.id)}>{timelineLabel(range)}</button>{shortened > 0 && <output className={`trim-preview ${edge}`}>−{shortened.toFixed(2)}s</output>}<TimelineTrimHandle edge="start" range={range} before={cutDuration(ranges.slice(0, index))} minimum={range.start} maximum={range.end - 0.08} total={total} onPreview={setPreview} onTrim={onTrim} /><TimelineTrimHandle edge="end" range={range} before={cutDuration(ranges.slice(0, index))} minimum={minimum} maximum={range.end} total={total} onPreview={setPreview} onTrim={onTrim} /></span>;
   })}</>;
 }
 
-function TimelineTrimHandle({ range, before, minimum, total, onPreview, onTrimEnd }: TimelineTrimHandleProps) {
+function TimelineTrimHandle({ edge, range, before, minimum, maximum, total, onPreview, onTrim }: TimelineTrimHandleProps) {
   const drag = useRef<TimelineTrimDrag | null>(null);
   function begin(event: ReactPointerEvent<HTMLButtonElement>) {
     event.stopPropagation();
     const bounds = event.currentTarget.closest(".timeline")?.getBoundingClientRect();
     if (!bounds) return;
-    drag.current = { left: bounds.left, width: bounds.width, before, minimum, total, maximum: range.end, next: range.end };
+    drag.current = { left: bounds.left, width: bounds.width, before, minimum, total, maximum, next: edge === "start" ? range.start : range.end };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function move(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -682,22 +682,25 @@ function TimelineTrimHandle({ range, before, minimum, total, onPreview, onTrimEn
     event.stopPropagation();
     const cutTime = Math.min(drag.current.total, Math.max(0, ((event.clientX - drag.current.left) / drag.current.width) * drag.current.total));
     drag.current.next = Math.min(drag.current.maximum, Math.max(drag.current.minimum, range.start + cutTime - drag.current.before));
-    onPreview({ rangeId: range.id, end: drag.current.next });
+    onPreview({ rangeId: range.id, edge, value: drag.current.next });
   }
   function finish(event: ReactPointerEvent<HTMLButtonElement>) {
     event.stopPropagation();
     const next = drag.current?.next;
     drag.current = null;
     onPreview(null);
-    if (next !== undefined) onTrimEnd(range.id, next, true);
+    if (next !== undefined) onTrim(range.id, edge, next, true);
   }
   function nudge(event: ReactKeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== "ArrowLeft") return;
+    const shorteningKey = edge === "start" ? "ArrowRight" : "ArrowLeft";
+    if (event.key !== shorteningKey) return;
     event.preventDefault();
     event.stopPropagation();
-    onTrimEnd(range.id, Math.max(minimum, range.end - (event.shiftKey ? 0.4 : 0.04)), true);
+    const amount = event.shiftKey ? 0.4 : 0.04;
+    const value = edge === "start" ? Math.min(maximum, range.start + amount) : Math.max(minimum, range.end - amount);
+    onTrim(range.id, edge, value, true);
   }
-  return <button className="trim-end-handle" aria-label={`Trim end of ${timelineLabel(range)}`} title={`Drag left to shorten ${timelineLabel(range)}`} onClick={(event) => event.stopPropagation()} onKeyDown={nudge} onPointerCancel={finish} onPointerDown={begin} onPointerMove={move} onPointerUp={finish} />;
+  return <button className={`trim-edge-handle ${edge}`} aria-label={`Trim ${edge} of ${timelineLabel(range)}`} title={`Drag ${edge === "start" ? "right" : "left"} to shorten ${timelineLabel(range)}`} onClick={(event) => event.stopPropagation()} onKeyDown={nudge} onPointerCancel={finish} onPointerDown={begin} onPointerMove={move} onPointerUp={finish} />;
 }
 
 function minimumTakeEnd(project: VideoProject | null, range: SourceRange): number {
@@ -862,13 +865,13 @@ function useWaveformExtraction(source: string, setWaveform: Dispatch<SetStateAct
 }
 
 type SourceState = { name: string; url: string; objectUrl: boolean };
-type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrimEnd: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
+type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
 type ExportNoticeProps = { status: ExportJobStatus | null; onCancel: () => void; onRetry: () => void };
 type AnalysisPanelProps = { project: VideoProject; duration: number; previewTakeId: string | null; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onPreview: (sceneId: string, takeId: string) => void };
 type SceneRowsProps = Omit<AnalysisPanelProps, "project"> & { scene: SceneProposal };
 type TakeRowProps = Pick<AnalysisPanelProps, "duration" | "onUpdate" | "onSelect" | "onPreview"> & { scene: SceneProposal; take: TakeProposal; previewing: boolean };
-type TimelineTrimHandler = (clipId: string, end: number, commit: boolean) => void;
-type TimelineTrimHandleProps = { range: SourceRange; before: number; minimum: number; total: number; onPreview: (preview: TimelineTrimPreview | null) => void; onTrimEnd: TimelineTrimHandler };
+type TimelineTrimHandler = (clipId: string, edge: "start" | "end", value: number, commit: boolean) => void;
+type TimelineTrimHandleProps = { edge: "start" | "end"; range: SourceRange; before: number; minimum: number; maximum: number; total: number; onPreview: (preview: TimelineTrimPreview | null) => void; onTrim: TimelineTrimHandler };
 type TimelineTrimDrag = { left: number; width: number; before: number; minimum: number; total: number; maximum: number; next: number };
 type TimelineSettingsProps = { timelineWindow: TimelineWindow; onViewPitch: () => void; onTimelineWindowChange: (window: TimelineWindow) => void };
 type PitchPopupProps = { artifact: PitchArtifact | null; mode: ViewMode; ranges: SourceRange[]; duration: number; playheadRatio: number; status: PitchStatus; onSeekRatio: (ratio: number) => void; onClose: () => void };

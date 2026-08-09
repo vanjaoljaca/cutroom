@@ -10,7 +10,9 @@ describe("program timeline", () => {
     const inserted = insertProgramClip(base, reference, 1);
     expect(inserted.clips.map((clip) => clip.id)).toEqual(["clip.scene.opening", reference.id, "clip.scene.ending"]);
     const moved = moveProgramClip(inserted, reference.id, 1);
-    const trimmed = trimProgramClip(moved, reference.id, "end", 2.5);
+    const startTrimmed = trimProgramClip(moved, reference.id, "start", 1.5);
+    const trimmed = trimProgramClip(startTrimmed, reference.id, "end", 2.5);
+    expect(trimmed.clips.at(-1)?.sourceStart).toBe(1.5);
     expect(trimmed.clips.at(-1)?.sourceEnd).toBe(2.5);
     expect(removeProgramClip(trimmed, reference.id).clips).toHaveLength(2);
   });

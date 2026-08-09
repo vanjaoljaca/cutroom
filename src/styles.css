@@ -317,10 +317,14 @@ button:focus-visible,
 .cut-divider.selected { box-shadow: inset 0 0 0 2px #f0c84b; }
 .program-clip-label { position: absolute; top: 6px; left: 6px; z-index: 3; max-width: calc(100% - 16px); min-width: 54px; height: 24px; overflow: hidden; padding: 0 7px; border: 0; border-radius: 4px; color: #101311; background: var(--segment-color); box-shadow: 0 2px 8px rgb(0 0 0 / 30%); cursor: pointer; font-size: 10px; font-weight: 800; letter-spacing: 0.04em; text-overflow: ellipsis; white-space: nowrap; }
 .cut-divider.reference .program-clip-label { color: #f4f1ea; background: #6c59d9; }
-.trim-preview { position: absolute; z-index: 6; right: 8px; bottom: 34px; padding: 2px 5px; color: #f5f2eb; background: rgb(10 12 10 / 88%); border-radius: 3px; font-size: 10px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.trim-end-handle { position: absolute; z-index: 5; top: 0; right: -6px; width: 12px; height: 100%; padding: 0; border: 0; background: transparent; cursor: ew-resize; touch-action: none; }
-.trim-end-handle::after { content: ""; position: absolute; top: 34px; right: 4px; bottom: 30px; width: 3px; border-radius: 2px; background: var(--segment-color); box-shadow: 0 0 0 1px rgb(10 12 10 / 55%); }
-.trim-end-handle:hover::after, .trim-end-handle:focus-visible::after { width: 5px; background: #fff; }
+.trim-preview { position: absolute; z-index: 6; bottom: 34px; padding: 2px 5px; color: #f5f2eb; background: rgb(10 12 10 / 88%); border-radius: 3px; font-size: 10px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.trim-preview.start { left: 8px; }
+.trim-preview.end { right: 8px; }
+.trim-edge-handle { width: 12px; height: 50%; position: absolute; z-index: 5; padding: 0; border: 0; background: transparent; cursor: ew-resize; touch-action: none; }
+.trim-edge-handle.start { top: 0; left: -8px; }
+.trim-edge-handle.end { right: -6px; bottom: 0; }
+.trim-edge-handle::after { content: ""; width: 3px; position: absolute; top: 4px; right: 4px; bottom: 4px; border-radius: 2px; background: var(--segment-color); box-shadow: 0 0 0 1px rgb(10 12 10 / 55%); }
+.trim-edge-handle:hover::after, .trim-edge-handle:focus-visible::after { width: 5px; background: #fff; }
 @keyframes segment-in { from { opacity: 0.35; transform: scaleY(0.88); } to { opacity: 1; transform: scaleY(1); } }
 .track-playhead { position: absolute; z-index: 8; top: 0; bottom: 0; width: 1px; background: rgb(245 242 235 / 86%); pointer-events: none; transform: translateX(-1px); }
 .timeline > .track-playhead { width: 2px; }
