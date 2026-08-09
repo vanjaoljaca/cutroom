@@ -61,7 +61,7 @@ button:focus-visible,
 .export-menu button:hover, .export-menu button:focus-visible { color: #fff; background: #292c29; outline: 1px solid #f0c84b; }
 .export-menu strong { font-size: 12px; }
 .export-menu span { color: #929790; font-size: 10px; }
-.workspace { width: min(100%, 1440px); margin: 0 auto; padding: 18px 28px 22px; }
+.workspace { width: min(100%, 1440px); margin: 0 auto; padding: 18px 28px 10px; }
 .phase-preview.original { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); align-items: start; gap: 22px; }
 .phase-preview.cut { display: grid; justify-items: center; }
 .selection-phase, .edit-phase { min-width: 0; }
