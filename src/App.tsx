@@ -451,7 +451,7 @@ export function App() {
         <div className="header-actions"><SaveIndicator status={saveStatus} /><div className="export-control"><button className="export-button" aria-label="Export video" title="Export video" aria-expanded={exportMenuOpen} disabled={exportStatus?.state === "queued" || exportStatus?.state === "exporting"} onClick={() => setExportMenuOpen((open) => !open)}><ExportIcon size={18} weight="bold" /></button>{exportMenuOpen && <div className="export-menu" role="menu" aria-label="Export options"><button role="menuitem" onClick={() => startExport("original-format")}><strong>Export original format</strong><span>HEVC · MOV · preserve source / smart render</span></button><button role="menuitem" onClick={() => startExport("tiktok-60")}><strong>Export for TikTok</strong><span>1080×1920 · 60 fps · MP4 · transcodes</span></button></div>}<ExportNotice status={exportStatus} onCancel={cancelExport} onRetry={() => startExport(exportStatus?.preset || "original-format")} /></div></div>
       </header>
 
-      <section className="workspace" aria-label="Video editor">
+      <section className={`workspace ${mode}`} aria-label="Video editor">
         <div className="workflow-bar"><nav className="workflow-steps" aria-label="Editing workflow">
             <button aria-label="Select scenes and takes" aria-current={mode === "original" ? "step" : undefined} title="Select scenes and takes" className={mode === "original" ? "active" : ""} onClick={() => changeMode("original")}><ListChecks size={16} weight="bold" /></button>
             <ArrowRight size={12} weight="bold" aria-hidden="true" />
