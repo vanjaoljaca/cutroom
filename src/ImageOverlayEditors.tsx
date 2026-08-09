@@ -18,16 +18,16 @@ export function EditableOverlayStage({ project, mode, sourceTime, cutTime, selec
 function OverlayTimingClip({ projectId, interval, duration, playhead, selected, candidates, selectedAssetId, onSelect, onChange, onCandidateSelect }: OverlayTimingClipProps) {
   const drag = useRef<TimingDrag | null>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const [menuLeft, setMenuLeft] = useState<number | null>(null);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const { overlay, start, end } = interval;
   useEffect(() => {
-    if (menuLeft === null) return;
+    if (menuPosition === null) return;
     const dismiss = (event: PointerEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent ? event.key === "Escape" : !menu.current?.contains(event.target as Node)) setMenuLeft(null);
+      if (event instanceof KeyboardEvent ? event.key === "Escape" : !menu.current?.contains(event.target as Node)) setMenuPosition(null);
     };
     document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", dismiss);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismiss); };
-  }, [menuLeft]);
+  }, [menuPosition]);
   function begin(event: ReactPointerEvent<HTMLElement>, mode: TimingDragMode) {
     event.stopPropagation();
     const bounds = event.currentTarget.closest(".overlay-track")?.getBoundingClientRect();
@@ -69,17 +69,16 @@ function OverlayTimingClip({ projectId, interval, duration, playhead, selected, 
   function openImageMenu(event: ReactMouseEvent<HTMLDivElement>) {
     if (!candidates.length) return;
     event.preventDefault(); event.stopPropagation();
-    const bounds = event.currentTarget.closest(".overlay-track")?.getBoundingClientRect();
-    if (bounds) setMenuLeft(clamp(event.clientX - bounds.left, 0, Math.max(0, bounds.width - 190)));
+    setMenuPosition({ left: clamp(event.clientX, 8, innerWidth - 206), top: clamp(event.clientY + 8, 8, innerHeight - 82) });
     onSelect(overlay.id, start);
   }
   function chooseImage(assetId: string) {
     onCandidateSelect?.(assetId);
-    setMenuLeft(null);
+    setMenuPosition(null);
   }
   const style = { left: `${(start / duration) * 100}%`, width: `${((end - start) / duration) * 100}%` };
   const order = compositingLaneOrder(overlay.layer);
-  return <><div className="timeline-track-label image-track-label" style={{ order }}>Image</div><div className="overlay-track timeline-track-content" data-overlay-editor aria-label={`Image overlay ${overlay.label}`} style={{ order }}><div className={`overlay-clip ${selected ? "selected" : ""}`} title={`${overlay.label} · ${formatTime(start)}–${formatTime(end)} · Right-click to choose image`} style={style} onContextMenu={openImageMenu}><button className="overlay-move-handle" aria-label={`Move ${overlay.label}`} onClick={() => onSelect(overlay.id, start)} onKeyDown={nudge} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><b>{overlay.label}</b><i>{formatTime(start)}</i></button><button className="overlay-time-handle start" aria-label={`Adjust start of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "start")} onPointerDown={(event) => begin(event, "start")} onPointerMove={move} onPointerUp={finish} /><button className="overlay-time-handle end" aria-label={`Adjust end of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "end")} onPointerDown={(event) => begin(event, "end")} onPointerMove={move} onPointerUp={finish} /></div>{menuLeft !== null && <div className="overlay-context-menu" ref={menu} role="menu" aria-label={`${overlay.label} image menu`} style={{ left: menuLeft }}><strong>Choose image</strong><div className="candidate-options">{candidates.map((asset, index) => <button key={asset.id} role="menuitemradio" aria-checked={asset.id === selectedAssetId} className={asset.id === selectedAssetId ? "selected" : ""} aria-label={`Use image ${index + 1} for ${overlay.label}`} title={asset.label} onClick={() => chooseImage(asset.id)}><img loading="lazy" decoding="async" src={`/api/projects/${projectId}/assets/${asset.id}`} alt="" /></button>)}</div></div>}<span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div></>;
+  return <><div className="timeline-track-label image-track-label" style={{ order }}>Image</div><div className="overlay-track timeline-track-content" data-overlay-editor aria-label={`Image overlay ${overlay.label}`} style={{ order }}><div className={`overlay-clip ${selected ? "selected" : ""}`} title={`${overlay.label} · ${formatTime(start)}–${formatTime(end)} · Right-click to choose image`} style={style} onContextMenu={openImageMenu}><button className="overlay-move-handle" aria-label={`Move ${overlay.label}`} onClick={() => onSelect(overlay.id, start)} onKeyDown={nudge} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><b>{overlay.label}</b><i>{formatTime(start)}</i></button><button className="overlay-time-handle start" aria-label={`Adjust start of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "start")} onPointerDown={(event) => begin(event, "start")} onPointerMove={move} onPointerUp={finish} /><button className="overlay-time-handle end" aria-label={`Adjust end of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "end")} onPointerDown={(event) => begin(event, "end")} onPointerMove={move} onPointerUp={finish} /></div>{menuPosition && <div className="overlay-context-menu" ref={menu} role="menu" aria-label={`${overlay.label} image menu`} style={menuPosition}><strong>Choose image</strong><div className="candidate-options">{candidates.map((asset, index) => <button key={asset.id} role="menuitemradio" aria-checked={asset.id === selectedAssetId} className={asset.id === selectedAssetId ? "selected" : ""} aria-label={`Use image ${index + 1} for ${overlay.label}`} title={asset.label} onClick={() => chooseImage(asset.id)}><img loading="lazy" decoding="async" src={`/api/projects/${projectId}/assets/${asset.id}`} alt="" /></button>)}</div></div>}<span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div></>;
 }
 
 function EditableOverlay({ overlay, projectId, visible, selected, onSelect, onChange }: EditableOverlayProps) {
@@ -153,6 +152,7 @@ type TimingDragMode = "move" | "start" | "end";
 type LayoutDragMode = "move" | "resize";
 type TimingDrag = { mode: TimingDragMode; left: number; width: number; pointer: number; start: number; end: number; nextStart: number; nextEnd: number };
 type LayoutDrag = { mode: LayoutDragMode; clientX: number; clientY: number; width: number; height: number; x: number; y: number; overlayWidth: number; overlayHeight: number | null; pixelWidth: number; pixelHeight: number };
+type MenuPosition = { left: number; top: number };
 type OverlayTimingChange = (id: string, start: number, end: number, commit: boolean) => void;
 type OverlayLayoutChange = (id: string, layout: OverlayLayout, commit: boolean) => void;
 type ImageOverlayTracksProps = { project: VideoProject; ranges: SourceRange[]; playhead: string; selectedId: string | null; onSelect: (id: string, start: number) => void; onTimingChange: OverlayTimingChange; onCandidateSelect: (bundleId: string, assetId: string) => void };

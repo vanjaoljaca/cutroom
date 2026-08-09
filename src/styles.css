@@ -371,7 +371,7 @@ button:focus-visible,
 .overlay-time-handle.start { left: 0; border-radius: 2px 0 0 2px; }
 .overlay-time-handle.end { right: 0; border-radius: 0 2px 2px 0; }
 .overlay-time-handle:hover, .overlay-time-handle:focus-visible { background: #fff; }
-.overlay-context-menu { min-width: 190px; position: absolute; z-index: 20; top: 26px; padding: 7px; border: 1px solid #4b4f49; border-radius: 4px; color: #d7dbd4; background: #191b19; box-shadow: 0 8px 20px rgb(0 0 0 / 45%); }
+.overlay-context-menu { min-width: 190px; position: fixed; z-index: 70; padding: 7px; border: 1px solid #4b4f49; border-radius: 4px; color: #d7dbd4; background: #191b19; box-shadow: 0 8px 20px rgb(0 0 0 / 45%); }
 .overlay-context-menu > strong { display: block; padding: 0 2px 6px; font-size: 10px; font-weight: 600; }
 .candidate-options { display: flex; gap: 5px; }
 .candidate-options button { width: 32px; height: 30px; position: relative; overflow: hidden; padding: 0; border: 1px solid #3a3d3a; border-radius: 2px; background: #1b1d1b; cursor: pointer; }
