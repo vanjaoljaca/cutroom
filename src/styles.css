@@ -134,7 +134,7 @@ button:focus-visible,
 .workflow-steps button.active { color: #f0c84b; border-color: #8b7837; background: #201e15; }
 .workflow-steps button:hover, .workflow-steps button:focus-visible { color: #f0c84b; border-color: #64695f; }
 .workflow-steps button:disabled { color: #4f534e; cursor: not-allowed; }
-.add-media-button { height: 27px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; color: #c8cbc5; border: 1px solid #3a3d3a; border-radius: 3px; background: #181a18; cursor: pointer; font-size: 10px; }
+.add-media-button { height: 24px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; color: #c8cbc5; border: 1px solid #3a3d3a; border-radius: 3px; background: #181a18; cursor: pointer; font-size: 10px; }
 .add-media-button:hover, .add-media-button:focus-visible, .add-media-button[aria-expanded="true"] { color: #f0c84b; border-color: #6a6038; }
 .no-cut-note { margin: 8px 0 0; color: #81857f; font-size: 12px; text-align: center; }
 .analysis-error { color: #ef8f85; font-size: 13px; }
@@ -159,7 +159,7 @@ button:focus-visible,
 .timeline-section { width: 100%; }
 .timeline-heading,
 .timeline-scale { display: flex; justify-content: space-between; color: #a4a8a2; font-size: 12px; }
-.timeline-heading { min-height: 24px; justify-content: flex-end; margin-bottom: 4px; color: #dedfdc; }
+.timeline-heading { min-height: 24px; justify-content: space-between; margin-bottom: 4px; color: #dedfdc; }
 .timeline-heading-actions { display: flex; align-items: center; gap: 10px; }
 .timeline-settings { position: relative; }
 .timeline-settings > button { width: 26px; height: 24px; display: grid; place-items: center; padding: 0; color: #9da19b; border: 1px solid #3a3d3a; border-radius: 3px; background: #151715; cursor: pointer; }

@@ -454,7 +454,7 @@ export function App() {
             <button aria-label="Select scenes and takes" aria-current={mode === "original" ? "step" : undefined} title="Select scenes and takes" className={mode === "original" ? "active" : ""} onClick={() => changeMode("original")}><ListChecks size={16} weight="bold" /></button>
             <ArrowRight size={12} weight="bold" aria-hidden="true" />
             <button aria-label="Edit timeline" aria-current={mode === "cut" ? "step" : undefined} disabled={!ranges.length} title={ranges.length ? "Edit timeline" : "No cut has been made yet"} className={mode === "cut" ? "active" : ""} onClick={() => changeMode("cut")}><Scissors size={16} weight="bold" /></button>
-          </nav>{mode === "cut" && <button className="add-media-button" aria-expanded={sourceBrowserOpen} onClick={() => setSourceBrowserOpen(true)}><Plus size={14} weight="bold" />Add</button>}</div>
+          </nav></div>
         {!ranges.length && <p className="no-cut-note">No take selected. Ask the video task to revise this project.</p>}
         {projectError && <p className="analysis-error">{projectError}</p>}
 
@@ -469,6 +469,8 @@ export function App() {
           waveform={waveform}
           playhead={playhead}
           onViewPitch={openPitch}
+          addMediaOpen={sourceBrowserOpen}
+          onAddMedia={() => setSourceBrowserOpen(true)}
           onSeek={seekFromTimeline}
           onTrim={trimTimelineClip}
           selectedOverlayId={selectedOverlayId}
@@ -518,13 +520,14 @@ function ExportNotice({ status, onCancel, onRetry }: ExportNoticeProps) {
   return null;
 }
 
-function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
+function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, addMediaOpen, onAddMedia, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
   const timelineDuration = mode === "cut" ? cutDuration(ranges) : duration;
   const canvasWidth = `${timelineCanvasPercent(timelineDuration, timelineWindow)}%`;
   const multiSource = mode === "cut" && new Set(ranges.map((range) => range.sourceId)).size > 1;
   return (
     <section className="timeline-section">
       <div className="timeline-heading">
+        {mode === "cut" && <button className="add-media-button" aria-expanded={addMediaOpen} onClick={onAddMedia}><Plus size={14} weight="bold" />Add</button>}
         <span className="timeline-heading-actions"><TimelineSettings timelineWindow={timelineWindow} onViewPitch={onViewPitch} onTimelineWindowChange={onTimelineWindowChange} /></span>
       </div>
       <div className="timeline-viewport">
@@ -865,7 +868,7 @@ function useWaveformExtraction(source: string, setWaveform: Dispatch<SetStateAct
 }
 
 type SourceState = { name: string; url: string; objectUrl: boolean };
-type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
+type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; addMediaOpen: boolean; onAddMedia: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
 type ExportNoticeProps = { status: ExportJobStatus | null; onCancel: () => void; onRetry: () => void };
 type AnalysisPanelProps = { project: VideoProject; duration: number; previewTakeId: string | null; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onPreview: (sceneId: string, takeId: string) => void };
 type SceneRowsProps = Omit<AnalysisPanelProps, "project"> & { scene: SceneProposal };
