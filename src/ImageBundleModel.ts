@@ -3,8 +3,14 @@ export function selectImageBundleCandidate(project: VideoProject, bundleId: stri
   if (!bundle) throw new Error(`Unknown bundle: ${bundleId}`);
   if (!bundle.candidateAssetIds.includes(assetId)) throw new Error(`Asset is not a candidate in bundle: ${bundleId}/${assetId}`);
   const bundles = project.assetLibrary.bundles.map((item) => item.id === bundleId ? { ...item, selectedAssetId: assetId } : item);
-  const overlays = project.overlays.map((overlay) => overlay.bundleId === bundleId ? { ...overlay, assetId } : overlay);
+  const overlays = project.overlays.map((overlay) => overlay.bundleId === bundleId ? { ...overlay, assetId, layout: { ...overlay.layout, height: null } } : overlay);
   return { ...project, assetLibrary: { ...project.assetLibrary, bundles }, overlays };
+}
+
+export function normalizeImageOverlayHeights(project: VideoProject): VideoProject {
+  if (project.overlays.every((overlay) => overlay.layout.height === null)) return project;
+  const overlays = project.overlays.map((overlay) => ({ ...overlay, layout: { ...overlay.layout, height: null } }));
+  return { ...project, overlays };
 }
 
 import type { VideoProject } from "./analysis-model";

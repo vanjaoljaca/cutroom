@@ -196,10 +196,12 @@ export function App() {
 
   function applyProject(next: VideoProject | null) {
     if (!next) return;
-    const normalized = { ...next, cuts: selectedCutsFromScenes(next.scenes) };
+    const selected = { ...next, cuts: selectedCutsFromScenes(next.scenes) };
+    const normalized = normalizeImageOverlayHeights(selected);
     const nextRanges = programRanges(normalized);
     setProject(normalized);
-    saveQueueRef.current?.reset(normalized);
+    saveQueueRef.current?.reset(next);
+    if (normalized !== selected) saveQueueRef.current?.enqueue(normalized);
     setRanges(nextRanges);
     setSelectedClipId(nextRanges[0]?.id || null);
     setMode(nextRanges.length ? "cut" : "original");
@@ -889,7 +891,7 @@ import type { CutProposal, ExportPreset, OverlayLayout, ProgramClip, ProjectTras
 import { createAudioPeaks } from "./audio-waveform";
 import { cutDuration, cutTimeFromSource, formatTime, sourceLocationFromCutTime, type SourceRange, type ViewMode } from "./editor-model";
 import { EditableOverlayStage, ImageOverlayTracks } from "./ImageOverlayEditors";
-import { selectImageBundleCandidate } from "./ImageBundleModel";
+import { normalizeImageOverlayHeights, selectImageBundleCandidate } from "./ImageBundleModel";
 import { createVideoThumbnails } from "./media-thumbnails";
 import type { ExportJobStatus } from "./ExportModel";
 import { PitchGraph, type PitchStatus } from "./PitchGraph";
