@@ -17,7 +17,17 @@ export function EditableOverlayStage({ project, mode, sourceTime, cutTime, selec
 
 function OverlayTimingClip({ projectId, interval, duration, playhead, selected, candidates, selectedAssetId, onSelect, onChange, onCandidateSelect }: OverlayTimingClipProps) {
   const drag = useRef<TimingDrag | null>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [menuLeft, setMenuLeft] = useState<number | null>(null);
   const { overlay, start, end } = interval;
+  useEffect(() => {
+    if (menuLeft === null) return;
+    const dismiss = (event: PointerEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key === "Escape" : !menu.current?.contains(event.target as Node)) setMenuLeft(null);
+    };
+    document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", dismiss);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismiss); };
+  }, [menuLeft]);
   function begin(event: ReactPointerEvent<HTMLElement>, mode: TimingDragMode) {
     event.stopPropagation();
     const bounds = event.currentTarget.closest(".overlay-track")?.getBoundingClientRect();
@@ -56,11 +66,20 @@ function OverlayTimingClip({ projectId, interval, duration, playhead, selected, 
     const next = moveInterval({ mode, left: 0, width: 1, pointer: 0, start, end, nextStart: start, nextEnd: end }, delta, duration);
     onChange(overlay.id, next.start, next.end, true);
   }
+  function openImageMenu(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!candidates.length) return;
+    event.preventDefault(); event.stopPropagation();
+    const bounds = event.currentTarget.closest(".overlay-track")?.getBoundingClientRect();
+    if (bounds) setMenuLeft(clamp(event.clientX - bounds.left, 0, Math.max(0, bounds.width - 190)));
+    onSelect(overlay.id, start);
+  }
+  function chooseImage(assetId: string) {
+    onCandidateSelect?.(assetId);
+    setMenuLeft(null);
+  }
   const style = { left: `${(start / duration) * 100}%`, width: `${((end - start) / duration) * 100}%` };
-  const candidateStyle = { left: `${(start / duration) * 100}%` };
-  const showCandidates = selected && candidates.length > 0;
   const order = compositingLaneOrder(overlay.layer);
-  return <><div className="timeline-track-label image-track-label" style={{ order }}>Image</div><div className={`overlay-track timeline-track-content ${showCandidates ? "popover-open" : ""}`} data-overlay-editor aria-label={`Image overlay ${overlay.label}`} style={{ order }}><div className={`overlay-clip ${selected ? "selected" : ""}`} title={`${overlay.label} · ${formatTime(start)}–${formatTime(end)}`} style={style}><button className="overlay-move-handle" aria-label={`Move ${overlay.label}`} onClick={() => onSelect(overlay.id, start)} onKeyDown={nudge} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><b>{overlay.label}</b><i>{formatTime(start)}</i></button><button className="overlay-time-handle start" aria-label={`Adjust start of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "start")} onPointerDown={(event) => begin(event, "start")} onPointerMove={move} onPointerUp={finish} /><button className="overlay-time-handle end" aria-label={`Adjust end of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "end")} onPointerDown={(event) => begin(event, "end")} onPointerMove={move} onPointerUp={finish} /></div>{showCandidates && <div className="candidate-options" role="dialog" aria-label={`Choose image for ${overlay.label}`} style={candidateStyle}>{candidates.map((asset, index) => <button key={asset.id} className={asset.id === selectedAssetId ? "selected" : ""} aria-label={`Use image ${index + 1} for ${overlay.label}`} title={asset.label} onClick={() => onCandidateSelect?.(asset.id)}><img loading="lazy" decoding="async" src={`/api/projects/${projectId}/assets/${asset.id}`} alt="" /></button>)}</div>}<span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div></>;
+  return <><div className="timeline-track-label image-track-label" style={{ order }}>Image</div><div className="overlay-track timeline-track-content" data-overlay-editor aria-label={`Image overlay ${overlay.label}`} style={{ order }}><div className={`overlay-clip ${selected ? "selected" : ""}`} title={`${overlay.label} · ${formatTime(start)}–${formatTime(end)} · Right-click to choose image`} style={style} onContextMenu={openImageMenu}><button className="overlay-move-handle" aria-label={`Move ${overlay.label}`} onClick={() => onSelect(overlay.id, start)} onKeyDown={nudge} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><b>{overlay.label}</b><i>{formatTime(start)}</i></button><button className="overlay-time-handle start" aria-label={`Adjust start of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "start")} onPointerDown={(event) => begin(event, "start")} onPointerMove={move} onPointerUp={finish} /><button className="overlay-time-handle end" aria-label={`Adjust end of ${overlay.label}`} onKeyDown={(event) => nudgeEdge(event, "end")} onPointerDown={(event) => begin(event, "end")} onPointerMove={move} onPointerUp={finish} /></div>{menuLeft !== null && <div className="overlay-context-menu" ref={menu} role="menu" aria-label={`${overlay.label} image menu`} style={{ left: menuLeft }}><strong>Choose image</strong><div className="candidate-options">{candidates.map((asset, index) => <button key={asset.id} role="menuitemradio" aria-checked={asset.id === selectedAssetId} className={asset.id === selectedAssetId ? "selected" : ""} aria-label={`Use image ${index + 1} for ${overlay.label}`} title={asset.label} onClick={() => chooseImage(asset.id)}><img loading="lazy" decoding="async" src={`/api/projects/${projectId}/assets/${asset.id}`} alt="" /></button>)}</div></div>}<span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div></>;
 }
 
 function EditableOverlay({ overlay, projectId, visible, selected, onSelect, onChange }: EditableOverlayProps) {
@@ -141,7 +160,7 @@ type EditableOverlayStageProps = { project: VideoProject; mode: ViewMode; source
 type OverlayTimingClipProps = { projectId: string; interval: ImageOverlayCutInterval; duration: number; playhead: string; selected: boolean; candidates: ImageAsset[]; selectedAssetId: string; onSelect: (id: string, start: number) => void; onChange: OverlayTimingChange; onCandidateSelect?: (assetId: string) => void };
 type EditableOverlayProps = { overlay: ImageOverlay; projectId: string; visible: boolean; selected: boolean; onSelect: (id: string) => void; onChange: OverlayLayoutChange };
 
-import { useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { ImageAsset, ImageOverlay, OverlayLayout, VideoProject } from "./analysis-model";
 import { cutDuration, formatTime, type SourceRange, type ViewMode } from "./editor-model";
 import { imageOverlayCutIntervals, visibleImageOverlays, type ImageOverlayCutInterval } from "./overlay-model";

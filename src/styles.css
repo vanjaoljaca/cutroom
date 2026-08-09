@@ -360,7 +360,6 @@ button:focus-visible,
 .pitch-popup-panel .pitch-graph { min-height: 224px; border-bottom: 0; }
 .pitch-popup-panel .pitch-y-axis, .pitch-popup-panel .pitch-plot svg { height: 158px; }
 .overlay-track { height: 28px; position: relative; background: #0f110f; border-bottom: 1px solid #292c29; }
-.overlay-track.popover-open { margin-bottom: 44px; }
 .overlay-clip { height: 22px; position: absolute; top: 2px; min-width: 12px; overflow: visible; display: flex; align-items: center; gap: 6px; padding: 0 9px; color: #101311; background: #bd73df; border-radius: 2px; cursor: grab; font-size: 10px; white-space: nowrap; touch-action: none; }
 .overlay-clip.selected { background: #d98cff; box-shadow: inset 0 0 0 1px #f3d9ff; }
 .overlay-clip:active { cursor: grabbing; }
@@ -372,7 +371,9 @@ button:focus-visible,
 .overlay-time-handle.start { left: 0; border-radius: 2px 0 0 2px; }
 .overlay-time-handle.end { right: 0; border-radius: 0 2px 2px 0; }
 .overlay-time-handle:hover, .overlay-time-handle:focus-visible { background: #fff; }
-.candidate-options { position: absolute; z-index: 20; top: 30px; display: flex; gap: 5px; padding: 5px; background: #191b19; border: 1px solid #4b4f49; border-radius: 4px; box-shadow: 0 8px 20px rgb(0 0 0 / 45%); }
+.overlay-context-menu { min-width: 190px; position: absolute; z-index: 20; top: 26px; padding: 7px; border: 1px solid #4b4f49; border-radius: 4px; color: #d7dbd4; background: #191b19; box-shadow: 0 8px 20px rgb(0 0 0 / 45%); }
+.overlay-context-menu > strong { display: block; padding: 0 2px 6px; font-size: 10px; font-weight: 600; }
+.candidate-options { display: flex; gap: 5px; }
 .candidate-options button { width: 32px; height: 30px; position: relative; overflow: hidden; padding: 0; border: 1px solid #3a3d3a; border-radius: 2px; background: #1b1d1b; cursor: pointer; }
 .candidate-options button.selected { border-color: #d98cff; box-shadow: 0 0 0 1px #d98cff; }
 .candidate-options img { width: 100%; height: 100%; display: block; object-fit: cover; }
