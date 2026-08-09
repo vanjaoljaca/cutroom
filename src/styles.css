@@ -180,7 +180,6 @@ button:focus-visible,
 .image-track-label::before { background: #d98cff; }
 .cutout-track-label::before { background: #68d8b5; }
 .timeline-track-content { min-width: 0; }
-.timeline-scale-label, .timeline-scale { order: 3000; }
 .timeline-scale-label::before { display: none; }
 .save-indicator { color: #8d928a; font-size: 11px; text-align: right; }
 .save-indicator.saving { color: #d6b46e; }

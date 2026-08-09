@@ -527,7 +527,7 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
   return (
     <section className="timeline-section">
       <div className="timeline-heading">
-        <span className="timeline-heading-actions"><TimelineSettings timelineWindow={timelineWindow} onViewPitch={onViewPitch} onTimelineWindowChange={onTimelineWindowChange} /><span>{formatTime(timelineDuration)}</span></span>
+        <span className="timeline-heading-actions"><TimelineSettings timelineWindow={timelineWindow} onViewPitch={onViewPitch} onTimelineWindowChange={onTimelineWindowChange} /></span>
       </div>
       <div className="timeline-viewport">
         <div className="timeline-canvas" style={{ width: canvasWidth }}>
@@ -541,10 +541,10 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
           </div>
           <div className="timeline-auxiliary-scroll">
             <div className="timeline-auxiliary-grid">
-              {mode === "cut" && project && <ImageOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onOverlayTimingChange} onCandidateSelect={onCandidateSelect} />}
-              {mode === "cut" && project && <CutoutOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onCutoutTimingChange} />}
               <div className="timeline-track-label timeline-scale-label" aria-hidden="true" />
               <div className="timeline-scale"><span>0:00</span><span>{formatTime(timelineDuration)}</span></div>
+              {mode === "cut" && project && <ImageOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onOverlayTimingChange} onCandidateSelect={onCandidateSelect} />}
+              {mode === "cut" && project && <CutoutOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onCutoutTimingChange} />}
             </div>
           </div>
         </div>
