@@ -320,10 +320,10 @@ button:focus-visible,
 .trim-preview { position: absolute; z-index: 6; bottom: 34px; padding: 2px 5px; color: #f5f2eb; background: rgb(10 12 10 / 88%); border-radius: 3px; font-size: 10px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .trim-preview.start { left: 8px; }
 .trim-preview.end { right: 8px; }
-.trim-edge-handle { width: 12px; height: 50%; position: absolute; z-index: 5; padding: 0; border: 0; background: transparent; cursor: ew-resize; touch-action: none; }
-.trim-edge-handle.start { top: 0; left: -8px; }
-.trim-edge-handle.end { right: -6px; bottom: 0; }
-.trim-edge-handle::after { content: ""; width: 3px; position: absolute; top: 4px; right: 4px; bottom: 4px; border-radius: 2px; background: var(--segment-color); box-shadow: 0 0 0 1px rgb(10 12 10 / 55%); }
+.trim-edge-handle { width: 12px; height: 33.333%; position: absolute; z-index: 5; padding: 0; border: 0; background: transparent; cursor: ew-resize; touch-action: none; }
+.trim-edge-handle.start { top: 16.667%; left: -8px; }
+.trim-edge-handle.end { right: -6px; bottom: 16.667%; }
+.trim-edge-handle::after { content: ""; width: 3px; position: absolute; top: 0; right: 4px; bottom: 0; border-radius: 2px; background: var(--segment-color); box-shadow: 0 0 0 1px rgb(10 12 10 / 55%); }
 .trim-edge-handle:hover::after, .trim-edge-handle:focus-visible::after { width: 5px; background: #fff; }
 @keyframes segment-in { from { opacity: 0.35; transform: scaleY(0.88); } to { opacity: 1; transform: scaleY(1); } }
 .track-playhead { position: absolute; z-index: 8; top: 0; bottom: 0; width: 1px; background: rgb(245 242 235 / 86%); pointer-events: none; transform: translateX(-1px); }
