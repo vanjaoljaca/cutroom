@@ -27,6 +27,7 @@ export function App() {
   const [cutoutStatus, setCutoutStatus] = useState<CutoutJobStatus | null>(null);
   const [takePreview, setTakePreview] = useState<TakePreview | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const activeRangeRef = useRef(0);
   const seekingRef = useRef(false);
@@ -37,6 +38,7 @@ export function App() {
   if (!saveQueueRef.current) saveQueueRef.current = new ProjectSaveQueue(saveProject, setSaveStatus);
 
   useObjectUrlCleanup(source);
+  useVideoPaintSurface(videoRef, videoCanvasRef, source.url);
   useThumbnailExtraction(source.url, duration, setThumbnails);
   useWaveformExtraction(source.url, setWaveform);
   useEffect(() => { void loadRequestedProject().then(applyProject).catch((error) => setProjectError(error instanceof Error ? error.message : "Could not load project.")); }, []);
@@ -432,7 +434,8 @@ export function App() {
     <span className="time-readout">{formatTime(displayTime)} / {formatTime(displayDuration)}</span>
   </div>;
   const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className="viewer" ref={viewerRef}>
-    <video ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
+    <video className="video-decoder" ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
+    <canvas className="video-paint-surface" ref={videoCanvasRef} aria-hidden="true" />
     {project && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
     {project && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
   </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
@@ -847,6 +850,15 @@ function useObjectUrlCleanup(source: SourceState) {
   }, [source]);
 }
 
+function useVideoPaintSurface(videoRef: RefObject<HTMLVideoElement | null>, canvasRef: RefObject<HTMLCanvasElement | null>, source: string) {
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !source) return;
+    return superviseVideoPainting(video, canvas);
+  }, [canvasRef, source, videoRef]);
+}
+
 function useThumbnailExtraction(source: string, duration: number, setThumbnails: Dispatch<SetStateAction<string[]>>) {
   useEffect(() => {
     if (!source || !duration) return;
@@ -886,7 +898,7 @@ type TakePreview = { sceneId: string; takeId: string; start: number; end: number
 const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 
 import { ArrowRight, ArrowsOut, Export as ExportIcon, FilmStrip, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, X } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
 import type { CutProposal, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, SceneProposal, TakeProposal, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
 import { cutDuration, cutTimeFromSource, formatTime, sourceLocationFromCutTime, type SourceRange, type ViewMode } from "./editor-model";
@@ -912,3 +924,4 @@ import { CutoutOverlayStage, CutoutOverlayTracks } from "./CutoutOverlayEditors"
 import { cutoutWithProgramInterval } from "./CutoutOverlayModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
 import { legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
+import { superviseVideoPainting } from "./VideoPaintSurface";
