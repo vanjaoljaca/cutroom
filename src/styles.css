@@ -326,6 +326,8 @@ button:focus-visible,
 .trim-edge-handle::after { content: ""; width: 3px; position: absolute; top: 0; right: 4px; bottom: 0; background: var(--segment-color); }
 .trim-edge-handle.start::after { border-radius: 2px 2px 0 0; }
 .trim-edge-handle.end::after { border-radius: 0 0 2px 2px; }
+.cut-divider:first-child .trim-edge-handle.start, .cut-divider:last-child .trim-edge-handle.end { height: 50%; top: 25%; bottom: auto; }
+.cut-divider:first-child .trim-edge-handle.start::after, .cut-divider:last-child .trim-edge-handle.end::after { border-radius: 2px; }
 .trim-edge-handle:hover::after, .trim-edge-handle:focus-visible::after { width: 5px; background: #fff; }
 @keyframes segment-in { from { opacity: 0.35; transform: scaleY(0.88); } to { opacity: 1; transform: scaleY(1); } }
 .track-playhead { position: absolute; z-index: 8; top: 0; bottom: 0; width: 1px; background: rgb(245 242 235 / 86%); pointer-events: none; transform: translateX(-1px); }
