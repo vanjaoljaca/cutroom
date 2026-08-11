@@ -13,6 +13,11 @@ describe("project routes", () => {
     expect(canonicalProjectPath("my cut")).toBe("/project/my%20cut");
     expect(projectWebUrl("img-9340-123")).toBe("http://capcut/project/img-9340-123");
   });
+
+  it("reads and builds recording workspace routes", () => {
+    expect(recordingIdFromLocation("/recording/raw.e16a0b0a17cbb492")).toBe("raw.e16a0b0a17cbb492");
+    expect(canonicalRecordingPath("raw.e16a0b0a17cbb492")).toBe("/recording/raw.e16a0b0a17cbb492");
+  });
 });
 
-import { canonicalProjectPath, legacyProjectRedirect, projectIdFromLocation, projectWebUrl } from "./ProjectRoute";
+import { canonicalProjectPath, canonicalRecordingPath, legacyProjectRedirect, projectIdFromLocation, projectWebUrl, recordingIdFromLocation } from "./ProjectRoute";

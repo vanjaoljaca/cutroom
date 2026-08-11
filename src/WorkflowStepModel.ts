@@ -1,4 +1,3 @@
-export const initialWorkflowView = {
-  mode: "original",
-  step: "projects",
-} as const;
+export function workflowViewForRoute(recordingId: string | null) {
+  return { mode: "original", step: recordingId ? "projects" : "original" } as const;
+}

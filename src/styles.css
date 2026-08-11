@@ -79,13 +79,15 @@ button:focus-visible,
 .project-rail > header .rail-projects-button { margin: 0 14px 0 0; padding: 0; }
 .project-row-actions button, .project-row form button { display: grid; place-items: center; padding: 5px; border: 0; color: #999e97; background: transparent; cursor: pointer; }
 .project-list { min-height: 0; overflow-y: auto; }
-.project-row { position: relative; border-bottom: 1px solid #292c29; }
-.project-row.current { background: #1d201d; box-shadow: inset 3px 0 #f0c84b; }
-.project-row > a { min-height: 58px; display: grid; align-content: center; gap: 3px; padding: 9px 70px 9px 18px; color: inherit; text-decoration: none; }
-.project-row > a:hover, .project-row > a:focus-visible { background: #242724; outline: 0; }
-.project-row > a strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.project-row > a span { color: #858a83; font-size: 10px; }
-.project-row > a small { color: #6f746d; font-size: 9px; }
+.project-list h2 { margin: 0; padding: 12px 18px 7px; color: #858a83; border-bottom: 1px solid #292c29; font-size: 9px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.project-row, .recording-row { position: relative; border-bottom: 1px solid #292c29; }
+.project-row.current, .recording-row.current { background: #1d201d; box-shadow: inset 3px 0 #f0c84b; }
+.project-row > a, .recording-row > a { min-height: 58px; display: grid; align-content: center; gap: 3px; padding: 9px 70px 9px 18px; color: inherit; text-decoration: none; }
+.recording-row > a { padding-right: 18px; }
+.project-row > a:hover, .project-row > a:focus-visible, .recording-row > a:hover, .recording-row > a:focus-visible { background: #242724; outline: 0; }
+.project-row > a strong, .recording-row > a strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.project-row > a span, .recording-row > a span { color: #858a83; font-size: 10px; }
+.project-row > a small, .recording-row > a small { color: #6f746d; font-size: 9px; }
 .project-row-actions { position: absolute; top: 50%; right: 8px; display: flex; transform: translateY(-50%); }
 .project-row-actions button:hover, .project-row-actions button:focus-visible { color: #f0c84b; }
 .project-row form { min-height: 58px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px; padding: 9px 9px 9px 18px; }

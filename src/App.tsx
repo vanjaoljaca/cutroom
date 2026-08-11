@@ -7,8 +7,8 @@ export function App() {
   const [duration, setDuration] = useState(0);
   const [originalDuration, setOriginalDuration] = useState(0);
   const [ranges, setRanges] = useState<SourceRange[]>([]);
-  const [mode, setMode] = useState<ViewMode>(initialWorkflowView.mode);
-  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>(initialWorkflowView.step);
+  const [mode, setMode] = useState<ViewMode>(() => workflowViewFromLocation().mode);
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>(() => workflowViewFromLocation().step);
   const [recordingPreviewId, setRecordingPreviewId] = useState<string | null>(null);
   const [recordingPreviewProject, setRecordingPreviewProject] = useState<VideoProject | null>(null);
   const [recordingOutputProjects, setRecordingOutputProjects] = useState<Record<string, VideoProject>>({});
@@ -26,7 +26,7 @@ export function App() {
   const [exportStatus, setExportStatus] = useState<ExportJobStatus | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({ state: "saved", revision: 0, error: null });
-  const [projectRailOpen, setProjectRailOpen] = useState(() => !projectIdFromLocation(location.pathname, location.search));
+  const [projectRailOpen, setProjectRailOpen] = useState(() => !workspaceIdFromLocation());
   const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedDeletedClipId, setSelectedDeletedClipId] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export function App() {
   useVideoPaintSurface(videoRef, videoCanvasRef, source.url);
   useThumbnailExtraction(source.url, duration, setThumbnails);
   useWaveformExtraction(source.url, setWaveform);
-  useEffect(() => { void loadRequestedProject().then(applyProject).catch((error) => setProjectError(error instanceof Error ? error.message : "Could not load project.")); }, []);
+  useEffect(() => { void loadRequestedWorkspace().then(applyProject).catch((error) => setProjectError(error instanceof Error ? error.message : "Could not load Cutroom workspace.")); }, []);
   useEffect(() => {
     const dismiss = (event: KeyboardEvent) => { if (event.key === "Escape") setSelectedOverlayId(null); };
     document.addEventListener("keydown", dismiss);
@@ -213,6 +213,7 @@ export function App() {
     setRecordingTakeMenu(null);
     setMode(nextMode);
     setWorkflowStep(nextMode);
+    if (project) history.replaceState(history.state, "", canonicalProjectPath(project.id));
     const projectRanges = project ? programRanges(project) : ranges;
     setRanges(projectRanges);
     if (nextMode === "cut" && projectRanges.length) seekProjectRange(projectRanges[0]);
@@ -235,6 +236,7 @@ export function App() {
     setSourceBrowserOpen(false);
     setWorkflowStep("projects");
     setMode("original");
+    syncRecordingRoute(project);
     setRecordingPreviewId(null);
     setRecordingPreviewProject(null);
     setRecordingTakeMenu(null);
@@ -365,8 +367,9 @@ export function App() {
     if (normalized !== selected) saveQueueRef.current?.enqueue(normalized);
     setRanges(nextRanges);
     setSelectedClipId(nextRanges[0]?.id || null);
-    setMode(initialWorkflowView.mode);
-    setWorkflowStep(initialWorkflowView.step);
+    const initialView = workflowViewFromLocation();
+    setMode(initialView.mode);
+    setWorkflowStep(initialView.step);
     setCurrentTime(0);
     activeRangeRef.current = 0;
     setActiveRange(0);
@@ -407,11 +410,10 @@ export function App() {
   }
 
   async function syncCompletedExport(status: ExportJobStatus | null) {
-    if (status?.state !== "completed" || syncedExportsRef.current.has(status.jobId)) return;
+    if (!project || status?.state !== "completed" || syncedExportsRef.current.has(status.jobId)) return;
     syncedExportsRef.current.add(status.jobId);
     try {
-      const next = await loadRequestedProject();
-      if (!next) return;
+      const next = await loadVideoProject(project.id);
       const normalized = { ...next, cuts: selectedCutsFromScenes(next.scenes) };
       setProject(normalized);
       setRanges(programRanges(normalized));
@@ -684,16 +686,16 @@ export function App() {
     </div>}
   </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
 
-  const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={project?.id || null} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
+  const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={workflowStep === "projects" ? null : project?.id || null} currentRecordingId={recordingIdFromLocation(location.pathname)} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
   if (!source.url) return <>{projectRail}<ProjectLanding error={projectError} onOpenProjects={() => setProjectRailOpen(true)} /></>;
 
   return (
     <><main className="editor-shell" onPointerDown={dismissOverlayFromBackground}>
       <header className="editor-header">
         <div className="header-brand">
-          <button className="projects-button" aria-label="Projects" title="Projects" aria-expanded={projectRailOpen} onClick={() => setProjectRailOpen((current) => !current)}><List size={22} weight="bold" /></button>
+          <button className="projects-button" aria-label="Cutroom menu" title="Cutroom menu" aria-expanded={projectRailOpen} onClick={() => setProjectRailOpen((current) => !current)}><List size={22} weight="bold" /></button>
           <span className="wordmark">Cutroom</span>
-          <span className="file-name">{displayProjectTitle(project?.title || source.name)}</span>
+          <span className="file-name">{workflowStep === "projects" ? source.name : displayProjectTitle(project?.title || source.name)}</span>
         </div>
         <div className="header-actions"><SaveIndicator status={saveStatus} /><div className="export-control"><button className="export-button" aria-label="Export video" title="Export video" aria-expanded={exportMenuOpen} disabled={exportStatus?.state === "queued" || exportStatus?.state === "exporting"} onClick={() => setExportMenuOpen((open) => !open)}><ExportIcon size={18} weight="bold" /></button>{exportMenuOpen && <div className="export-menu" role="menu" aria-label="Export options"><button role="menuitem" onClick={() => startExport("original-format")}><strong>Export original format</strong><span>HEVC · MOV · preserve source / smart render</span></button><button role="menuitem" onClick={() => startExport("tiktok-60")}><strong>Export for TikTok · Hardware</strong><span>Default · VideoToolbox · 1080×1920 · 60 fps</span></button><button role="menuitem" onClick={() => startExport("tiktok-software")}><strong>High-quality software</strong><span>libx264 slow · CRF 14 · same edit and overlays</span></button></div>}<ExportNotice status={exportStatus} onCancel={cancelExport} onRetry={() => startExport(exportStatus?.preset || "original-format")} /></div></div>
       </header>
@@ -1074,7 +1076,9 @@ function rangeStyle(range: SourceRange, duration: number) {
   return { left: `${(range.start / duration) * 100}%`, width: `${((range.end - range.start) / duration) * 100}%` };
 }
 
-async function loadRequestedProject(): Promise<VideoProject | null> {
+async function loadRequestedWorkspace(): Promise<VideoProject | null> {
+  const recordingId = recordingIdFromLocation(location.pathname);
+  if (recordingId) return loadRecordingWorkspace(recordingId);
   const id = projectIdFromLocation(location.pathname, location.search);
   if (!id) return null;
   const redirect = legacyProjectRedirect(location.pathname, location.search);
@@ -1082,11 +1086,41 @@ async function loadRequestedProject(): Promise<VideoProject | null> {
   return loadVideoProject(id);
 }
 
+async function loadRecordingWorkspace(recordingId: string): Promise<VideoProject> {
+  const library = await rawMediaLibrary();
+  const record = library.records.find((candidate) => candidate.id === recordingId);
+  if (!record) throw new Error(`Unknown source recording: ${recordingId}`);
+  const results = await Promise.allSettled(record.projectIds.map(loadVideoProject));
+  const projects = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []).filter((project) => project.mediaLibrary.sources.some((source) => source.rawMediaId === recordingId));
+  if (!projects.length) throw new Error("This recording is not attached to a project workspace yet.");
+  return projects.sort((left, right) => recordingPlanForProject(right).outputs.length - recordingPlanForProject(left).outputs.length)[0];
+}
+
+async function rawMediaLibrary(): Promise<RawMediaLibrary> {
+  const response = await fetch("/api/raw-media");
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Could not load source recordings.");
+  return result as RawMediaLibrary;
+}
+
 async function loadVideoProject(id: string): Promise<VideoProject> {
   const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Could not load video project.");
   return result as VideoProject;
+}
+
+function workflowViewFromLocation() {
+  return workflowViewForRoute(recordingIdFromLocation(location.pathname));
+}
+
+function workspaceIdFromLocation() {
+  return recordingIdFromLocation(location.pathname) || projectIdFromLocation(location.pathname, location.search);
+}
+
+function syncRecordingRoute(project: VideoProject | null) {
+  const rawMediaId = project?.mediaLibrary.sources.find((source) => source.id === project.mediaLibrary.primarySourceId)?.rawMediaId;
+  if (rawMediaId) history.replaceState(history.state, "", canonicalRecordingPath(rawMediaId));
 }
 
 async function saveProject(project: VideoProject): Promise<VideoProject> {
@@ -1266,7 +1300,7 @@ function ignoreTextPosition(_id: string, _x: number, _y: number, _persist: boole
 
 import { ArrowCounterClockwise, ArrowRight, ArrowsOut, Check, Export as ExportIcon, FilmStrip, GitBranch, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
-import type { CutProposal, DeletedProgramClip, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RecordingPlan, RecordingPlanOutput, SceneProposal, TakeProposal, TextOverlay, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
+import type { CutProposal, DeletedProgramClip, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RawMediaLibrary, RecordingPlan, RecordingPlanOutput, SceneProposal, TakeProposal, TextOverlay, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
 import { cutDuration, cutTimeFromSource, formatTime, sourceLocationFromCutTime, type SourceRange, type ViewMode } from "./editor-model";
 import { EditableOverlayStage, ImageOverlayTracks } from "./ImageOverlayEditors";
@@ -1295,9 +1329,9 @@ import { videoOverlayWithProgramInterval } from "./VideoOverlayModel";
 import { TextOverlayStage, TextOverlayTracks } from "./TextOverlayEditors";
 import { textOverlayWithProgramInterval } from "./TextOverlayModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
-import { legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
+import { canonicalProjectPath, canonicalRecordingPath, legacyProjectRedirect, projectIdFromLocation, recordingIdFromLocation } from "./ProjectRoute";
 import { paintVideoFrame, superviseVideoPainting } from "./VideoPaintSurface";
 import { recordingOutputRanges, recordingPlanCoverage, recordingPlanDuration, recordingPlanForProject } from "./RecordingPlanModel";
 import { projectRecordingViewer, rawRecordingViewer } from "./RecordingViewerModel";
 import { countProgramScenesAndTakes, recordingProgramSegments, recordingSegmentActivationKey, selectProgramTake, type RecordingProgramSegment } from "./RecordingTakeSelectionModel";
-import { initialWorkflowView } from "./WorkflowStepModel";
+import { workflowViewForRoute } from "./WorkflowStepModel";
