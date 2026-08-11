@@ -113,8 +113,10 @@ button:focus-visible,
 }
 
 .viewer { position: relative; }
-.viewer .video-decoder { width: 100%; height: 100%; position: absolute; inset: 0; display: block; object-fit: contain; opacity: 0; pointer-events: none; }
-.video-paint-surface { width: 100%; height: 100%; display: block; }
+.viewer .video-decoder { width: 100%; height: 100%; position: absolute; inset: 0; z-index: 0; display: block; object-fit: contain; opacity: 1; pointer-events: none; }
+.video-paint-surface { width: 100%; height: 100%; position: absolute; inset: 0; z-index: 0; display: block; visibility: hidden; pointer-events: none; }
+.viewer.canvas-fallback .video-decoder { opacity: 0; }
+.viewer.canvas-fallback .video-paint-surface { visibility: visible; }
 .buffering-indicator { position: absolute; left: 50%; top: 50%; z-index: 100; transform: translate(-50%, -50%); padding: 5px 8px; color: #e7e9e3; border: 1px solid #555a54; border-radius: 3px; background: rgb(15 17 15 / 88%); font-size: 10px; letter-spacing: .02em; pointer-events: none; }
 .overlay-stage { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .image-overlay-item, .cutout-overlay-item, .video-overlay-item { position: absolute; pointer-events: auto; touch-action: none; }
@@ -162,6 +164,7 @@ button:focus-visible,
 .player-controls .restart-button { color: #9da19b; }
 .player-controls .play-button { color: #f5f2eb; }
 .time-readout { font-size: 14px; font-variant-numeric: tabular-nums; text-align: center; }
+.playback-health { min-width: 42px; height: 22px !important; margin-left: 4px; padding: 0 5px; color: #8f948d !important; border: 1px solid #343733; border-radius: 9px; font-size: 9px; font-variant-numeric: tabular-nums; }
 
 .timeline-section { width: 100%; }
 .timeline-heading,

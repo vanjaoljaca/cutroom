@@ -35,6 +35,8 @@ export function App() {
   const [cutoutStatus, setCutoutStatus] = useState<CutoutJobStatus | null>(null);
   const [takePreview, setTakePreview] = useState<TakePreview | null>(null);
   const [buffering, setBuffering] = useState(false);
+  const [playbackHealth, setPlaybackHealth] = useState<PlaybackHealth | null>(null);
+  const [canvasFallback, setCanvasFallback] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -50,7 +52,7 @@ export function App() {
   if (!playbackDiagnosticsRef.current) playbackDiagnosticsRef.current = new PlaybackDiagnostics();
 
   useObjectUrlCleanup(source);
-  useVideoPaintSurface(videoRef, videoCanvasRef, source.url);
+  useVideoPaintSurface(videoRef, videoCanvasRef, source.url, canvasFallback);
   useThumbnailExtraction(source.url, duration, setThumbnails);
   useWaveformExtraction(source.url, setWaveform);
   useEffect(() => { void loadRequestedWorkspace().then(applyProject).catch((error) => setProjectError(error instanceof Error ? error.message : "Could not load Cutroom workspace.")); }, []);
@@ -74,8 +76,8 @@ export function App() {
     const diagnostics = playbackDiagnosticsRef.current;
     const video = videoRef.current;
     if (!diagnostics || !video || !source.url) return;
-    diagnostics.attach(video, setBuffering);
-    installPlaybackDiagnosticSnapshot(diagnostics);
+    diagnostics.attach(video, setBuffering, setPlaybackHealth);
+    installPlaybackDiagnosticSnapshot(diagnostics, (enabled) => { setCanvasFallback(enabled); logEvent("video_canvas_fallback_changed", { enabled }); });
     return () => diagnostics.detach();
   }, [source.url]);
   useEffect(() => {
@@ -682,8 +684,9 @@ export function App() {
     <button className="restart-button" aria-label="Play from start" title="Play from start" onClick={playFromStart}><PlayFromStartIcon /></button>
     <button className="play-button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlayback}>{playing ? <Pause size={28} weight="fill" /> : <Play size={28} weight="fill" />}</button>
     <span className="time-readout">{formatTime(displayTime)} / {formatTime(displayDuration)}</span>
+    {playbackHealth && <button className="playback-health" title={playbackHealthTitle(playbackHealth)} onClick={downloadPlaybackDiagnostics}>{playbackHealth.presentedFps >= 10 ? `${Math.round(playbackHealth.presentedFps)} fps` : "Stats"}</button>}
   </div>;
-  const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className="viewer" ref={viewerRef}>
+  const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className={`viewer ${canvasFallback ? "canvas-fallback" : "native-video"}`} ref={viewerRef}>
     <video className="video-decoder" ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
     <canvas className="video-paint-surface" ref={videoCanvasRef} aria-hidden="true" />
     {buffering && <span className="buffering-indicator" role="status">Buffering…</span>}
@@ -698,6 +701,14 @@ export function App() {
       <TextOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onPositionChange={ignoreTextPosition} />
     </div>}
   </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
+
+  function downloadPlaybackDiagnostics() {
+    const snapshot = playbackDiagnosticsRef.current?.snapshot();
+    if (!snapshot) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a"); link.href = url; link.download = `${project?.id || "cutroom"}-playback-diagnostics.json`; link.click(); URL.revokeObjectURL(url);
+    logEvent("playback_diagnostics_downloaded", { projectId: project?.id || "", events: snapshot.events.length, droppedFrames: snapshot.frames.dropped });
+  }
 
   const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={workflowStep === "projects" ? null : project?.id || null} currentRecordingId={recordingIdFromLocation(location.pathname)} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
   if (!source.url) return <>{projectRail}<ProjectLanding error={projectError} onOpenProjects={() => setProjectRailOpen(true)} /></>;
@@ -1250,13 +1261,13 @@ function useObjectUrlCleanup(source: SourceState) {
   }, [source]);
 }
 
-function useVideoPaintSurface(videoRef: RefObject<HTMLVideoElement | null>, canvasRef: RefObject<HTMLCanvasElement | null>, source: string) {
+function useVideoPaintSurface(videoRef: RefObject<HTMLVideoElement | null>, canvasRef: RefObject<HTMLCanvasElement | null>, source: string, enabled: boolean) {
   useEffect(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !source) return;
+    if (!video || !canvas || !source || !enabled) return;
     return superviseVideoPainting(video, canvas);
-  }, [canvasRef, source, videoRef]);
+  }, [canvasRef, enabled, source, videoRef]);
 }
 
 function useThumbnailExtraction(source: string, duration: number, setThumbnails: Dispatch<SetStateAction<string[]>>) {
@@ -1312,6 +1323,11 @@ function ignoreOverlaySelection(_id: string) {}
 function ignoreOverlayLayout(_id: string, _layout: OverlayLayout, _commit: boolean) {}
 function ignoreTextPosition(_id: string, _x: number, _y: number, _persist: boolean) {}
 
+function playbackHealthTitle(health: PlaybackHealth) {
+  if (health.presentedFps < 10) return "Playback sampling waits for a visible compositor · Download diagnostics";
+  return `Presented ${health.presentedFps.toFixed(1)} fps · compositor ${health.compositorHz.toFixed(1)} Hz · observer ${health.observerHz.toFixed(1)} Hz · ${health.droppedFrames} dropped · Download diagnostics`;
+}
+
 import { ArrowCounterClockwise, ArrowRight, ArrowsOut, Check, Export as ExportIcon, FilmStrip, GitBranch, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
 import type { CutProposal, DeletedProgramClip, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RawMediaLibrary, RecordingPlan, RecordingPlanOutput, SceneProposal, TakeProposal, TextOverlay, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
@@ -1349,4 +1365,4 @@ import { recordingIntentLabel, recordingOutputRanges, recordingPlanCoverage, rec
 import { projectRecordingViewer, rawRecordingViewer } from "./RecordingViewerModel";
 import { countProgramScenesAndTakes, recordingProgramSegments, recordingSegmentActivationKey, selectProgramTake, type RecordingProgramSegment } from "./RecordingTakeSelectionModel";
 import { workflowViewForRoute } from "./WorkflowStepModel";
-import { installPlaybackDiagnosticSnapshot, PlaybackDiagnostics } from "./PlaybackDiagnostics";
+import { installPlaybackDiagnosticSnapshot, PlaybackDiagnostics, type PlaybackHealth } from "./PlaybackDiagnostics";
