@@ -235,7 +235,9 @@ button:focus-visible,
 .recording-output-card { width: 100%; min-height: 78px; position: relative; z-index: 4; display: grid; gap: 7px; padding: 9px 12px 11px; color: inherit; text-align: left; pointer-events: none; }
 .recording-output-heading { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 9px; }
 .recording-output-number { color: #71766f; font-size: 10px; text-align: center; }
+.recording-output-title-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .recording-output-title { color: #e2e4df; font-size: 12px; font-weight: 680; }
+.recording-output-intent { flex: 0 0 auto; padding: 2px 5px; color: #b9c8ff; border: 1px solid #566385; border-radius: 2px; font-size: 8px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
 .recording-output-list p { margin: 2px 0 0; overflow: hidden; color: #858a83; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .recording-output-preview { width: 100%; height: 36px; position: relative; z-index: 4; display: flex; gap: 1px; overflow: hidden; padding: 2px; border: 1px solid #373b37; border-radius: 3px; color: #dfe2dc; background: #0d0f0d; pointer-events: auto; }
 .recording-output-segment { min-width: 12px; position: relative; padding: 0; border: 0; color: inherit; background: linear-gradient(135deg, #32433e, #25332f); cursor: default; }

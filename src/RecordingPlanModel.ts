@@ -16,6 +16,10 @@ export function recordingPlanCoverage(output: RecordingPlanOutput) {
   return output.sourceRanges.reduce((total, range) => total + range.end - range.start, 0);
 }
 
+export function recordingIntentLabel(intent: RecordingPlanOutput["intent"]) {
+  return intent === "existing" ? "Existing" : null;
+}
+
 export function recordingOutputRanges(plan: RecordingPlan, output: RecordingPlanOutput): SourceRange[] {
   return output.sourceRanges.map((range, index) => ({ id: `${output.id}.${index + 1}`, order: index + 1, start: range.start, end: range.end, sourceId: plan.sourceId, kind: "source", label: output.projectTitle }));
 }

@@ -773,9 +773,10 @@ function RecordingPlanPanel({ project, outputProjects, selectedOutputId, activeC
 function RecordingOutputCard({ project, output, index, plan, selected, activeClipId, onPreview, onPlaySegment, onTakeMenu }: RecordingOutputCardProps) {
   const ranges = project ? recordingProgramSegments(project) : recordingFallbackSegments(plan, output);
   const count = project ? countProgramScenesAndTakes(project) : null;
+  const intentLabel = recordingIntentLabel(output.intent);
   const preview = () => { void onPreview(output); };
   const summary = count ? `${count.scenes} scenes · ${count.takes} takes · ${formatTime(cutDuration(ranges))}` : output.summary || outputRangeSummary(output);
-  return <li className={selected ? "selected" : ""}><button className="recording-output-select" aria-label={`View assembled project ${output.projectTitle}`} aria-pressed={selected} onClick={preview} onKeyDown={(event) => activateRecordingButton(event, preview)} /><div className="recording-output-card"><div className="recording-output-heading"><span className="recording-output-number">{index + 1}</span><div><strong className="recording-output-title">{output.projectTitle}</strong><p>{summary}</p></div></div><MiniProjectTimeline project={project} output={output} ranges={ranges} activeClipId={activeClipId} onPlaySegment={onPlaySegment} onTakeMenu={onTakeMenu} /></div></li>;
+  return <li className={selected ? "selected" : ""}><button className="recording-output-select" aria-label={`View assembled project ${output.projectTitle}`} aria-pressed={selected} onClick={preview} onKeyDown={(event) => activateRecordingButton(event, preview)} /><div className="recording-output-card"><div className="recording-output-heading"><span className="recording-output-number">{index + 1}</span><div><div className="recording-output-title-line"><strong className="recording-output-title">{output.projectTitle}</strong>{intentLabel && <span className="recording-output-intent">{intentLabel}</span>}</div><p>{summary}</p></div></div><MiniProjectTimeline project={project} output={output} ranges={ranges} activeClipId={activeClipId} onPlaySegment={onPlaySegment} onTakeMenu={onTakeMenu} /></div></li>;
 }
 
 function recordingFallbackSegments(plan: RecordingPlan, output: RecordingPlanOutput) {
@@ -1331,7 +1332,7 @@ import { textOverlayWithProgramInterval } from "./TextOverlayModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
 import { canonicalProjectPath, canonicalRecordingPath, legacyProjectRedirect, projectIdFromLocation, recordingIdFromLocation } from "./ProjectRoute";
 import { paintVideoFrame, superviseVideoPainting } from "./VideoPaintSurface";
-import { recordingOutputRanges, recordingPlanCoverage, recordingPlanDuration, recordingPlanForProject } from "./RecordingPlanModel";
+import { recordingIntentLabel, recordingOutputRanges, recordingPlanCoverage, recordingPlanDuration, recordingPlanForProject } from "./RecordingPlanModel";
 import { projectRecordingViewer, rawRecordingViewer } from "./RecordingViewerModel";
 import { countProgramScenesAndTakes, recordingProgramSegments, recordingSegmentActivationKey, selectProgramTake, type RecordingProgramSegment } from "./RecordingTakeSelectionModel";
 import { workflowViewForRoute } from "./WorkflowStepModel";

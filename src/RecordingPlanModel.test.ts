@@ -17,7 +17,12 @@ describe("recording plan", () => {
     const output = { id: "output.one", projectTitle: "One", sourceRanges: [{ start: 8, end: 9 }, { start: 2, end: 4 }] } as RecordingPlanOutput;
     expect(recordingOutputRanges(plan, output).map((range) => [range.start, range.end])).toEqual([[8, 9], [2, 4]]);
   });
+
+  it("labels reused projects without labeling new ones", () => {
+    expect(recordingIntentLabel("existing")).toBe("Existing");
+    expect(recordingIntentLabel("new")).toBeNull();
+  });
 });
 
 import type { RecordingPlan, RecordingPlanOutput } from "./analysis-model";
-import { recordingOutputRanges, recordingPlanCoverage, recordingPlanDuration } from "./RecordingPlanModel";
+import { recordingIntentLabel, recordingOutputRanges, recordingPlanCoverage, recordingPlanDuration } from "./RecordingPlanModel";
