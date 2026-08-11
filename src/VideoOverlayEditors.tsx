@@ -11,12 +11,12 @@ export function VideoOverlayTracks({ project, ranges, playhead, selectedId, onSe
 function EditableVideoOverlay({ project, interval, cutTime, playing, visible, selected, onSelect, onChange }: EditableVideoOverlayProps) {
   const drag = useRef<LayoutDrag | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => { void synchronizeOverlayVideo(videoRef.current, interval.overlay.sourceStart + cutTime - interval.start, playing && visible); }, [cutTime, interval, playing, visible]);
+  useEffect(() => { void synchronizeOverlayPlayback(videoRef.current, interval.overlay.sourceStart + cutTime - interval.start, visible, playing); }, [cutTime, interval, playing, visible]);
   const begin = (event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode) => beginLayoutDrag(event, mode, interval.overlay, drag, onSelect);
   const move = (event: ReactPointerEvent<HTMLElement>) => moveLayoutDrag(event, interval.overlay, drag, onChange);
   const finish = (event: ReactPointerEvent<HTMLElement>) => finishLayoutDrag(event, interval.overlay, drag, onChange);
   const source = project.mediaLibrary.sources.find((item) => item.id === interval.overlay.sourceId);
-  return <div className={`video-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={overlayStyle(interval.overlay, source, visible)}><button className="overlay-move-surface" tabIndex={visible ? 0 : -1} aria-label={`Move ${interval.overlay.label} on video`} onClick={() => onSelect(interval.overlay.id)} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted={interval.overlay.muted} playsInline preload="auto" src={`/api/projects/${project.id}/media/${interval.overlay.sourceId}`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${interval.overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} /></div>;
+  return <div className={`video-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={overlayStyle(interval.overlay, source, visible)}><button className="overlay-move-surface" tabIndex={visible ? 0 : -1} aria-label={`Move ${interval.overlay.label} on video`} onClick={() => onSelect(interval.overlay.id)} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted={interval.overlay.muted} playsInline preload="metadata" src={`/api/projects/${project.id}/media/${interval.overlay.sourceId}`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${interval.overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} /></div>;
 }
 
 function VideoTimingClip({ interval, duration, selected, onSelect, onChange }: VideoTimingClipProps) {
@@ -78,13 +78,6 @@ function movedInterval(drag: TimingDrag, delta: number, duration: number) {
   const start = clamp(drag.start + delta, 0, duration - length); return { start, end: start + length };
 }
 
-async function synchronizeOverlayVideo(video: HTMLVideoElement | null, time: number, shouldPlay: boolean) {
-  if (!video) return;
-  if (Math.abs(video.currentTime - Math.max(0, time)) > 0.12) video.currentTime = Math.max(0, time);
-  if (shouldPlay && video.paused) await video.play().catch(() => undefined);
-  if (!shouldPlay && !video.paused) video.pause();
-}
-
 function clamp(value: number, minimum: number, maximum: number) { return Math.min(maximum, Math.max(minimum, value)); }
 const minimumDuration = 0.08;
 const anchorTransform = { "top-left": "none", "top-right": "translateX(-100%)", center: "translate(-50%, -50%)", "bottom-left": "translateY(-100%)", "bottom-right": "translate(-100%, -100%)" };
@@ -106,3 +99,4 @@ import { compositingLaneOrder } from "./CompositingLaneModel";
 import { proportionalOverlaySize } from "./OverlayResizeModel";
 import { programRanges } from "./ProgramTimelineModel";
 import { videoOverlayProgramIntervals, type VideoOverlayProgramInterval } from "./VideoOverlayModel";
+import { synchronizeOverlayPlayback } from "./OverlayVideoPlayback";

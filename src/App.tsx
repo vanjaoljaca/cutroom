@@ -34,6 +34,7 @@ export function App() {
   const [viewDeleted, setViewDeleted] = useState(false);
   const [cutoutStatus, setCutoutStatus] = useState<CutoutJobStatus | null>(null);
   const [takePreview, setTakePreview] = useState<TakePreview | null>(null);
+  const [buffering, setBuffering] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -44,7 +45,9 @@ export function App() {
   const syncedExportsRef = useRef(new Set<string>());
   const pendingMediaRef = useRef<PendingMediaLoad | null>(null);
   const recordingPreviewRequestRef = useRef(0);
+  const playbackDiagnosticsRef = useRef<PlaybackDiagnostics | null>(null);
   if (!saveQueueRef.current) saveQueueRef.current = new ProjectSaveQueue(saveProject, setSaveStatus);
+  if (!playbackDiagnosticsRef.current) playbackDiagnosticsRef.current = new PlaybackDiagnostics();
 
   useObjectUrlCleanup(source);
   useVideoPaintSurface(videoRef, videoCanvasRef, source.url);
@@ -68,6 +71,14 @@ export function App() {
     void syncCompletedExport(exportStatus);
   }, [project?.id, exportStatus]);
   useEffect(() => {
+    const diagnostics = playbackDiagnosticsRef.current;
+    const video = videoRef.current;
+    if (!diagnostics || !video || !source.url) return;
+    diagnostics.attach(video, setBuffering);
+    installPlaybackDiagnosticSnapshot(diagnostics);
+    return () => diagnostics.detach();
+  }, [source.url]);
+  useEffect(() => {
     if (workflowStep !== "projects" || !project) return;
     let cancelled = false;
     const outputs = recordingPlanForProject(project).outputs.filter((output) => output.status === "ready");
@@ -87,6 +98,7 @@ export function App() {
     ? cutTimeFromSource(ranges, displayRange, currentTime)
     : currentTime;
   const displayDuration = workflowStep === "projects" ? (mode === "cut" ? assembledDuration : duration) : (mode === "cut" ? assembledDuration : originalDuration);
+  useEffect(() => playbackDiagnosticsRef.current?.updateContext({ mode, sourceUrl: source.url, sourceTime: currentTime, programTime: displayTime, rangeIndex: activeRange }), [mode, source.url, currentTime, displayTime, activeRange]);
 
   function handleMetadata() {
     const nextDuration = videoRef.current?.duration || 0;
@@ -674,6 +686,7 @@ export function App() {
   const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className="viewer" ref={viewerRef}>
     <video className="video-decoder" ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
     <canvas className="video-paint-surface" ref={videoCanvasRef} aria-hidden="true" />
+    {buffering && <span className="buffering-indicator" role="status">Buffering…</span>}
     {project && workflowStep !== "projects" && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
     {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
     {project && workflowStep !== "projects" && <VideoOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeVideoOverlayLayout} />}
@@ -1336,3 +1349,4 @@ import { recordingIntentLabel, recordingOutputRanges, recordingPlanCoverage, rec
 import { projectRecordingViewer, rawRecordingViewer } from "./RecordingViewerModel";
 import { countProgramScenesAndTakes, recordingProgramSegments, recordingSegmentActivationKey, selectProgramTake, type RecordingProgramSegment } from "./RecordingTakeSelectionModel";
 import { workflowViewForRoute } from "./WorkflowStepModel";
+import { installPlaybackDiagnosticSnapshot, PlaybackDiagnostics } from "./PlaybackDiagnostics";

@@ -16,7 +16,7 @@ export function CutoutOverlayTracks({ project, ranges, playhead, selectedId, onS
 function EditableCutout({ projectId, interval, cutTime, playing, visible, selected, onSelect, onChange }: EditableCutoutProps) {
   const drag = useRef<LayoutDrag | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => { void synchronizeCutout(videoRef.current, cutTime - interval.start, playing && visible); }, [cutTime, interval.start, playing, visible]);
+  useEffect(() => { void synchronizeOverlayPlayback(videoRef.current, cutTime - interval.start, visible, playing); }, [cutTime, interval.start, playing, visible]);
   function begin(event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode) {
     event.stopPropagation();
     const bounds = event.currentTarget.closest(".viewer")?.getBoundingClientRect();
@@ -38,7 +38,7 @@ function EditableCutout({ projectId, interval, cutTime, playing, visible, select
   }
   const overlay = interval.overlay;
   const style = overlayFrameStyle(overlay.layout, overlay.opacity, overlay.layer, visible);
-  return <div className={`cutout-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={style}><button className="overlay-move-surface" tabIndex={visible ? 0 : -1} aria-label={`Move ${overlay.label} on video`} onClick={() => onSelect(overlay.id)} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted playsInline preload="auto" src={`/api/projects/${projectId}/cutouts/${overlay.id}/preview`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} /></div>;
+  return <div className={`cutout-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={style}><button className="overlay-move-surface" tabIndex={visible ? 0 : -1} aria-label={`Move ${overlay.label} on video`} onClick={() => onSelect(overlay.id)} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted playsInline preload="metadata" src={`/api/projects/${projectId}/cutouts/${overlay.id}/preview`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} /></div>;
 }
 
 function CutoutTimingClip({ interval, duration, selected, onSelect, onChange }: CutoutTimingClipProps) {
@@ -78,13 +78,6 @@ function movedInterval(drag: TimingDrag, delta: number, interval: CutoutProgramI
   return { start, end: start + length };
 }
 
-async function synchronizeCutout(video: HTMLVideoElement | null, localTime: number, shouldPlay: boolean) {
-  if (!video) return;
-  if (Math.abs(video.currentTime - Math.max(0, localTime)) > 0.12) video.currentTime = Math.max(0, localTime);
-  if (shouldPlay && video.paused) await video.play().catch(() => undefined);
-  if (!shouldPlay && !video.paused) video.pause();
-}
-
 function changedLayout(layout: OverlayLayout, drag: LayoutDrag, clientX: number, clientY: number): OverlayLayout {
   const deltaX = (clientX - drag.clientX) / drag.width;
   const deltaY = (clientY - drag.clientY) / drag.height;
@@ -118,3 +111,4 @@ import { cutoutProgramIntervals, type CutoutProgramInterval } from "./CutoutOver
 import { programRanges } from "./ProgramTimelineModel";
 import { compositingLaneOrder } from "./CompositingLaneModel";
 import { proportionalOverlaySize } from "./OverlayResizeModel";
+import { synchronizeOverlayPlayback } from "./OverlayVideoPlayback";
