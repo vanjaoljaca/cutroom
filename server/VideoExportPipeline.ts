@@ -41,7 +41,7 @@ async function renderTikTokAttempt(project: VideoProject, cuts: SourceRange[], s
 
 export function projectSnapshotHash(project: VideoProject): string {
   const bundles = project.assetLibrary.bundles.map(({ id, selectedAssetId }) => ({ id, selectedAssetId }));
-  return createHash("sha256").update(JSON.stringify({ mediaLibrary: project.mediaLibrary, programTimeline: project.programTimeline, overlays: project.overlays, cutoutOverlays: project.cutoutOverlays, videoOverlays: project.videoOverlays, textOverlays: project.textOverlays, bundles })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ mediaLibrary: project.mediaLibrary, programTimeline: project.programTimeline, overlays: project.overlays, cutoutOverlays: project.cutoutOverlays, videoOverlays: project.videoOverlays, textOverlays: project.textOverlays, subtitleTrack: project.subtitleTrack, bundles })).digest("hex");
 }
 
 async function prepareExportPaths(project: VideoProject, preset: ExportPreset, extension: "mov" | "mp4"): Promise<ExportPaths> {
@@ -58,7 +58,7 @@ async function renderOriginalFormat(project: VideoProject, cuts: SourceRange[], 
   const sourcePath = primarySourcePath(project);
   const source = await probeMedia(sourcePath);
   const keyframes = await probeKeyframes(sourcePath);
-  const overlays = [...editorialOverlays(project, cuts).map((item) => ({ id: item.id, start: item.start, end: item.end })), ...textOverlayProgramIntervals(project, cuts).map((item) => ({ id: item.overlay.id, start: item.start, end: item.end }))];
+  const overlays = [...editorialOverlays(project, cuts).map((item) => ({ id: item.id, start: item.start, end: item.end })), ...allTextOverlayIntervals(project, cuts).map((item) => ({ id: item.overlay.id, start: item.start, end: item.end }))];
   const plan = planSourcePreservingExport({ projectId: project.id, source: sourcePlanMedia(sourcePath, source), cuts, overlays, keyframes });
   const snapshotHash = projectSnapshotHash(project);
   const jobId = options.jobId || `export-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -127,7 +127,7 @@ function filterGraph(project: VideoProject, cuts: SourceRange[], inputIndexes: n
   const inputs = cuts.map((_, index) => `[v${index}][a${index}]`).join("");
   const concat = `${inputs}concat=n=${cuts.length}:v=1:a=1[cutv][exporta]`;
   const overlayFilters = overlays.flatMap((interval, index) => editorialOverlayFilter(project, interval, index, overlayInputStart, width, height));
-  const textIntervals = textOverlayProgramIntervals(project, cuts);
+  const textIntervals = allTextOverlayIntervals(project, cuts);
   const visualBase = overlays.length ? `composite${overlays.length - 1}` : "cutv";
   const textFilters = textIntervals.map((interval, index) => textOverlayFilter(interval, index, index ? `text${index - 1}` : visualBase, width, height));
   const finalBase = textIntervals.length ? `text${textIntervals.length - 1}` : visualBase;
@@ -151,7 +151,14 @@ export function textOverlayFilter(interval: TextOverlayProgramInterval, index: n
   const x = overlay.style.align === "left" ? `${overlay.layout.x}*w` : overlay.style.align === "right" ? `${overlay.layout.x}*w-text_w` : `${overlay.layout.x}*w-text_w/2`;
   const y = overlay.layout.anchor === "bottom" ? `${overlay.layout.y}*h-text_h` : overlay.layout.anchor === "center" ? `${overlay.layout.y}*h-text_h/2` : `${overlay.layout.y}*h`;
   const decoration = `${overlay.style.strokeColor ? `:borderw=${overlay.style.strokeWidth}:bordercolor=${overlay.style.strokeColor}` : ""}${overlay.style.backgroundColor ? `:box=1:boxcolor=${overlay.style.backgroundColor}@0.78:boxborderw=${Math.round(overlay.style.fontSize * 0.28)}` : ""}${overlay.style.shadow ? ":shadowcolor=#000000@0.8:shadowx=2:shadowy=3" : ""}`;
-  return `[${input}]drawtext=fontfile='${textFontPath}':text='${escapeDrawtext(wrapped.text)}':fontsize=${overlay.style.fontSize}:fontcolor=${overlay.style.color}@${overlay.opacity}:x=${x}:y=${y}:enable='between(t,${interval.start},${interval.end})'${decoration}[text${index}]`;
+  return `[${input}]drawtext=fontfile='${fontPath(overlay.style.fontFamily)}':text='${escapeDrawtext(wrapped.text)}':fontsize=${overlay.style.fontSize}:fontcolor=${overlay.style.color}@${overlay.opacity}:x=${x}:y=${y}:enable='between(t,${interval.start},${interval.end})'${decoration}[text${index}]`;
+}
+
+function fontPath(preset: VideoProject["textOverlays"][number]["style"]["fontFamily"]) { return preset === "classic-social" ? classicSocialFontPath : textFontPath; }
+
+function allTextOverlayIntervals(project: VideoProject, cuts: SourceRange[]) {
+  const subtitles = project.subtitleTrack.cues.map((cue) => subtitleAsTextOverlay(project, cue));
+  return textOverlayProgramIntervals({ ...project, textOverlays: [...project.textOverlays, ...subtitles] }, cuts);
 }
 
 function escapeDrawtext(text: string) { return text.replaceAll("\\", "\\\\").replaceAll("'", "\\'").replaceAll(":", "\\:").replaceAll("%", "\\%"); }
@@ -402,11 +409,13 @@ import { videoOverlayProgramIntervals, type VideoOverlayProgramInterval } from "
 import { textOverlayProgramIntervals, type TextOverlayProgramInterval } from "../src/TextOverlayModel";
 import { wrapTextForCanvas } from "../src/TextLayoutModel";
 import { assertRuntimeStorageAvailable } from "./RuntimeStorage";
+import { subtitleAsTextOverlay } from "../src/SubtitleModel";
 
 const execFile = promisify(execFileCallback);
 const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
 const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
 const textFontPath = "/System/Library/Fonts/SFNS.ttf";
+const classicSocialFontPath = "/System/Library/Fonts/Supplemental/Arial Bold.ttf";
 const qualityProfile: ExportQualityProfile = { encoder: "libx264", preset: "slow", crf: 14, profile: "high", level: "4.2", pixelFormat: "yuv420p", color: "bt709", fpsMode: "cfr-60", audio: "aac-lc-48k-256k" };
 export const hardwareReviewProfile: ExportQualityProfile = { ...qualityProfile, encoder: "h264_videotoolbox", preset: "hardware", crf: null };
 

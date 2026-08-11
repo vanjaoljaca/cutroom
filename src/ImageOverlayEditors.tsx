@@ -87,7 +87,7 @@ function EditableOverlay({ overlay, asset, projectId, visible, selected, onSelec
   const [preview, setPreview] = useState<OverlayLayout | null>(null);
   function begin(event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode) {
     event.stopPropagation();
-    const bounds = event.currentTarget.closest(".viewer")?.getBoundingClientRect();
+    const bounds = event.currentTarget.closest(".overlay-stage")?.getBoundingClientRect();
     const overlayBounds = event.currentTarget.closest(".image-overlay-item")?.getBoundingClientRect();
     if (!bounds || !overlayBounds) return;
     drag.current = { mode, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, x: overlay.layout.x, y: overlay.layout.y, overlayWidth: overlay.layout.width, overlayHeight: null, pixelWidth: overlayBounds.width, pixelHeight: overlayBounds.height };

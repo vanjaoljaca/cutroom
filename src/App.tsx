@@ -509,6 +509,18 @@ export function App() {
     commitProject({ ...project, textOverlays }, persist);
   }
 
+  function changeSubtitleTiming(id: string, start: number, end: number, persist: boolean) {
+    if (!project) return;
+    const cues = project.subtitleTrack.cues.map((cue) => cue.id === id ? { ...cue, target: { type: "selected-cut" as const, start, end } } : cue);
+    commitProject({ ...project, subtitleTrack: { ...project.subtitleTrack, cues } }, persist);
+  }
+
+  function updateSubtitle(cue: SubtitleCue) { if (project) commitProject({ ...project, subtitleTrack: updateSubtitleCue(project.subtitleTrack, cue) }, true); }
+  function updateSubtitleTrack(subtitleTrack: SubtitleTrack) { if (project) commitProject({ ...project, subtitleTrack }, true); }
+  function deleteSubtitle(id: string) { if (project) commitProject({ ...project, subtitleTrack: deleteSubtitleCue(project.subtitleTrack, id) }, true); }
+  function restoreSubtitle(id: string) { if (project) commitProject({ ...project, subtitleTrack: restoreSubtitleCue(project.subtitleTrack, id) }, true); }
+  function splitSubtitle(id: string, at: number) { if (project) commitProject({ ...project, subtitleTrack: splitSubtitleCue(project.subtitleTrack, id, at) }, true); }
+
   async function createSubjectCutout(media: VideoMediaSource, start: number, end: number, targetClipId: string) {
     if (!project) return;
     try { applyCutoutStatus(await requestCutout(project.id, { sourceId: media.id, sourceStart: start, sourceEnd: end, targetClipId, label: `${media.label} cutout` })); }
@@ -694,6 +706,7 @@ export function App() {
     {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
     {project && workflowStep !== "projects" && <VideoOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeVideoOverlayLayout} />}
     {project && workflowStep !== "projects" && <TextOverlayStage project={project} mode={mode} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onPositionChange={changeTextOverlayPosition} />}
+    {project && workflowStep === "cut" && <SubtitleStage project={project} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} />}
     {recordingPreviewProject && workflowStep === "projects" && <div className="recording-preview-overlays" inert>
       <EditableOverlayStage project={recordingPreviewProject} mode="cut" sourceTime={currentTime} cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
       <CutoutOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
@@ -759,6 +772,13 @@ export function App() {
           onVideoOverlayTimingChange={changeVideoOverlayTiming}
           onTextOverlayTimingChange={changeTextOverlayTiming}
           onTextOverlayUpdate={updateTextOverlay}
+          onSubtitleTimingChange={changeSubtitleTiming}
+          onSubtitleUpdate={updateSubtitle}
+          onSubtitleTrackUpdate={updateSubtitleTrack}
+          onSubtitleDelete={deleteSubtitle}
+          onSubtitleRestore={restoreSubtitle}
+          onSubtitleSplit={splitSubtitle}
+          playheadTime={displayTime}
           timelineWindow={project?.editorPreferences.timelineWindow || "auto"}
           onTimelineWindowChange={changeTimelineWindow}
           selectedClipId={selectedClipId}
@@ -897,7 +917,7 @@ function ExportNotice({ status, onCancel, onRetry }: ExportNoticeProps) {
   return null;
 }
 
-function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, addMediaOpen, onAddMedia, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, onVideoOverlayTimingChange, onTextOverlayTimingChange, onTextOverlayUpdate, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, selectedDeletedClipId, onSelectDeletedClip, onRemoveClip, onSplitAt, onRestoreClip, splitMode, onSplitModeChange, viewDeleted, onViewDeletedChange }: TimelineProps) {
+function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, playheadTime, onViewPitch, addMediaOpen, onAddMedia, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, onVideoOverlayTimingChange, onTextOverlayTimingChange, onTextOverlayUpdate, onSubtitleTimingChange, onSubtitleUpdate, onSubtitleTrackUpdate, onSubtitleDelete, onSubtitleRestore, onSubtitleSplit, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, selectedDeletedClipId, onSelectDeletedClip, onRemoveClip, onSplitAt, onRestoreClip, splitMode, onSplitModeChange, viewDeleted, onViewDeletedChange }: TimelineProps) {
   const timelineDuration = mode === "cut" ? cutDuration(ranges) : duration;
   const canvasWidth = `${timelineCanvasPercent(timelineDuration, timelineWindow)}%`;
   const multiSource = mode === "cut" && new Set(ranges.map((range) => range.sourceId)).size > 1;
@@ -926,6 +946,7 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
               {mode === "cut" && project && <CutoutOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onCutoutTimingChange} />}
               {mode === "cut" && project && <VideoOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onVideoOverlayTimingChange} />}
               {mode === "cut" && project && <TextOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onTextOverlayTimingChange} onUpdate={onTextOverlayUpdate} />}
+              {mode === "cut" && project && <SubtitleTrackLane project={project} duration={timelineDuration} playhead={playhead} playheadTime={playheadTime} selectedId={selectedOverlayId} viewDeleted={viewDeleted} onSelect={onSelectOverlay} onTimingChange={onSubtitleTimingChange} onUpdate={onSubtitleUpdate} onTrackUpdate={onSubtitleTrackUpdate} onDelete={onSubtitleDelete} onRestore={onSubtitleRestore} onSplit={onSubtitleSplit} />}
             </div>
           </div>
         </div>
@@ -1293,7 +1314,7 @@ function useWaveformExtraction(source: string, setWaveform: Dispatch<SetStateAct
 }
 
 type SourceState = { name: string; url: string; objectUrl: boolean };
-type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; addMediaOpen: boolean; onAddMedia: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onVideoOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onTextOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onTextOverlayUpdate: (overlay: TextOverlay) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; selectedDeletedClipId: string | null; onSelectDeletedClip: (id: string) => void; onRemoveClip: () => void; onSplitAt: (cutTime: number) => void; onRestoreClip: () => void; splitMode: boolean; onSplitModeChange: () => void; viewDeleted: boolean; onViewDeletedChange: (visible: boolean) => void };
+type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; playheadTime: number; onViewPitch: () => void; addMediaOpen: boolean; onAddMedia: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onVideoOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onTextOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onTextOverlayUpdate: (overlay: TextOverlay) => void; onSubtitleTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onSubtitleUpdate: (cue: SubtitleCue) => void; onSubtitleTrackUpdate: (track: SubtitleTrack) => void; onSubtitleDelete: (id: string) => void; onSubtitleRestore: (id: string) => void; onSubtitleSplit: (id: string, at: number) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; selectedDeletedClipId: string | null; onSelectDeletedClip: (id: string) => void; onRemoveClip: () => void; onSplitAt: (cutTime: number) => void; onRestoreClip: () => void; splitMode: boolean; onSplitModeChange: () => void; viewDeleted: boolean; onViewDeletedChange: (visible: boolean) => void };
 type ExportNoticeProps = { status: ExportJobStatus | null; onCancel: () => void; onRetry: () => void };
 type AnalysisPanelProps = { project: VideoProject; duration: number; previewTakeId: string | null; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onPreview: (sceneId: string, takeId: string) => void };
 type SceneRowsProps = Omit<AnalysisPanelProps, "project"> & { scene: SceneProposal };
@@ -1330,7 +1351,7 @@ function playbackHealthTitle(health: PlaybackHealth) {
 
 import { ArrowCounterClockwise, ArrowRight, ArrowsOut, Check, Export as ExportIcon, FilmStrip, GitBranch, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
-import type { CutProposal, DeletedProgramClip, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RawMediaLibrary, RecordingPlan, RecordingPlanOutput, SceneProposal, TakeProposal, TextOverlay, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
+import type { CutProposal, DeletedProgramClip, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RawMediaLibrary, RecordingPlan, RecordingPlanOutput, SceneProposal, SubtitleCue, SubtitleTrack, TakeProposal, TextOverlay, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
 import { cutDuration, cutTimeFromSource, formatTime, sourceLocationFromCutTime, type SourceRange, type ViewMode } from "./editor-model";
 import { EditableOverlayStage, ImageOverlayTracks } from "./ImageOverlayEditors";
@@ -1358,6 +1379,8 @@ import { VideoOverlayStage, VideoOverlayTracks } from "./VideoOverlayEditors";
 import { videoOverlayWithProgramInterval } from "./VideoOverlayModel";
 import { TextOverlayStage, TextOverlayTracks } from "./TextOverlayEditors";
 import { textOverlayWithProgramInterval } from "./TextOverlayModel";
+import { SubtitleStage, SubtitleTrackLane } from "./SubtitleEditors";
+import { deleteSubtitleCue, restoreSubtitleCue, splitSubtitleCue, updateSubtitleCue } from "./SubtitleModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
 import { canonicalProjectPath, canonicalRecordingPath, legacyProjectRedirect, projectIdFromLocation, recordingIdFromLocation } from "./ProjectRoute";
 import { paintVideoFrame, superviseVideoPainting } from "./VideoPaintSurface";

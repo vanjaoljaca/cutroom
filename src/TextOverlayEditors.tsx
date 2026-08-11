@@ -1,13 +1,13 @@
 export function TextOverlayStage({ project, mode, cutTime, selectedId, onSelect, onPositionChange }: TextOverlayStageProps) {
   if (mode !== "cut") return null;
-  const intervals = textOverlayProgramIntervals(project, programRanges(project));
+  const intervals = textOverlayProgramIntervals(project, programRanges(project)).filter(({ overlay }) => overlay.role === "title");
   return <div className="text-overlay-stage" aria-label="Text overlays">{intervals.map(({ overlay, start, end }) => <MovableText key={overlay.id} overlay={overlay} visible={cutTime >= start && cutTime <= end} selected={selectedId === overlay.id} onSelect={onSelect} onPositionChange={onPositionChange} />)}</div>;
 }
 
 function MovableText({ overlay, visible, selected, onSelect, onPositionChange }: MovableTextProps) {
   const drag = useRef<TextPositionDrag | null>(null);
   function begin(event: ReactPointerEvent<HTMLButtonElement>) {
-    const bounds = event.currentTarget.closest(".viewer")?.getBoundingClientRect(); if (!bounds) return;
+    const bounds = event.currentTarget.closest(".text-overlay-stage")?.getBoundingClientRect(); if (!bounds) return;
     event.stopPropagation(); onSelect(overlay.id); event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { x: overlay.layout.x, y: overlay.layout.y, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, nextX: overlay.layout.x, nextY: overlay.layout.y, dirty: false };
   }
@@ -27,7 +27,7 @@ function MovableText({ overlay, visible, selected, onSelect, onPositionChange }:
 
 export function TextOverlayTracks({ project, ranges, playhead, selectedId, onSelect, onTimingChange, onUpdate }: TextOverlayTracksProps) {
   const duration = cutDuration(ranges);
-  return <>{textOverlayProgramIntervals(project, ranges).map((interval) => <TextTimingTrack key={interval.overlay.id} interval={interval} duration={duration} playhead={playhead} selected={selectedId === interval.overlay.id} onSelect={onSelect} onTimingChange={onTimingChange} onUpdate={onUpdate} />)}</>;
+  return <>{textOverlayProgramIntervals(project, ranges).filter(({ overlay }) => overlay.role === "title").map((interval) => <TextTimingTrack key={interval.overlay.id} interval={interval} duration={duration} playhead={playhead} selected={selectedId === interval.overlay.id} onSelect={onSelect} onTimingChange={onTimingChange} onUpdate={onUpdate} />)}</>;
 }
 
 function TextTimingTrack({ interval, duration, playhead, selected, onSelect, onTimingChange, onUpdate }: TextTimingTrackProps) {
@@ -49,13 +49,15 @@ function TextTimingTrack({ interval, duration, playhead, selected, onSelect, onT
 
 function TextEditor({ overlay, onClose, onUpdate }: TextEditorProps) {
   const [text, setText] = useState(overlay.text);
-  return <div className="text-editor-scrim" onPointerDown={onClose}><section className="text-editor" role="dialog" aria-modal="true" aria-label={`Edit ${overlay.role}`} onPointerDown={(event) => event.stopPropagation()}><header><strong>Edit {overlay.role}</strong><button aria-label="Close text editor" onClick={onClose}>×</button></header><textarea aria-label="Overlay text" value={text} onChange={(event) => setText(event.target.value)} /><label><input type="checkbox" checked={overlay.enabled} onChange={(event) => onUpdate({ ...overlay, enabled: event.target.checked })} /> Show in video</label><button onClick={() => { onUpdate({ ...overlay, text: text.trim() }); onClose(); }}>Save</button></section></div>;
+  return <div className="text-editor-scrim" onPointerDown={onClose}><section className="text-editor" role="dialog" aria-modal="true" aria-label={`Edit ${overlay.role}`} onPointerDown={(event) => event.stopPropagation()}><header><strong>Edit {overlay.role}</strong><button aria-label="Close text editor" onClick={onClose}>×</button></header><textarea aria-label="Overlay text" value={text} onChange={(event) => setText(event.target.value)} /><label>Font preset<select aria-label="Font preset" value={overlay.style.fontFamily} onChange={(event) => onUpdate({ ...overlay, style: { ...overlay.style, fontFamily: event.target.value as TextOverlay["style"]["fontFamily"] } })}><option value="classic-social">Classic social</option><option value="system-sans">System</option></select></label><label><input type="checkbox" checked={overlay.enabled} onChange={(event) => onUpdate({ ...overlay, enabled: event.target.checked })} /> Show in video</label><button onClick={() => { onUpdate({ ...overlay, text: text.trim() }); onClose(); }}>Save</button></section></div>;
 }
 
-function textOverlayStyle(overlay: TextOverlay, visible: boolean): CSSProperties {
+export function textOverlayStyle(overlay: TextOverlay, visible: boolean): CSSProperties {
   const translate = overlay.layout.anchor === "center" ? "translate(-50%, -50%)" : overlay.layout.anchor === "bottom" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
-  return { display: visible ? "block" : "none", left: `${overlay.layout.x * 100}%`, top: `${overlay.layout.y * 100}%`, width: "max-content", maxWidth: `${overlay.layout.maxWidth * 100}%`, boxSizing: "border-box", transform: translate, color: overlay.style.color, background: overlay.style.backgroundColor || "transparent", WebkitTextStroke: overlay.style.strokeColor ? `${overlay.style.strokeWidth}px ${overlay.style.strokeColor}` : undefined, textShadow: overlay.style.shadow ? "0 2px 8px rgb(0 0 0 / 85%)" : undefined, textAlign: overlay.style.align, fontSize: `${overlay.style.fontSize / 10.8}cqw`, fontWeight: overlay.style.fontWeight, opacity: overlay.opacity, zIndex: overlay.layer };
+  return { display: visible ? "block" : "none", left: `${overlay.layout.x * 100}%`, top: `${overlay.layout.y * 100}%`, width: "max-content", maxWidth: `${overlay.layout.maxWidth * 100}%`, boxSizing: "border-box", transform: translate, color: overlay.style.color, background: overlay.style.backgroundColor || "transparent", WebkitTextStroke: overlay.style.strokeColor ? `${sourcePixelCss(overlay.style.strokeWidth)} ${overlay.style.strokeColor}` : undefined, textShadow: overlay.style.shadow ? `0 ${sourcePixelCss(2)} ${sourcePixelCss(8)} rgb(0 0 0 / 85%)` : undefined, textAlign: overlay.style.align, fontFamily: overlay.style.fontFamily === "classic-social" ? "Arial, sans-serif" : "system-ui, sans-serif", fontSize: sourcePixelCss(overlay.style.fontSize), fontWeight: overlay.style.fontWeight, opacity: overlay.opacity, zIndex: overlay.layer };
 }
+
+export function sourcePixelCss(value: number) { return `${value / 10.8}cqw`; }
 
 function moved(drag: TimingDrag, delta: number, duration: number) {
   if (drag.mode === "start") return { start: clamp(drag.start + delta, 0, drag.end - 0.04), end: drag.end };

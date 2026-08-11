@@ -43,7 +43,7 @@ function VideoTimingClip({ interval, duration, selected, onSelect, onChange }: V
 
 function beginLayoutDrag(event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode, overlay: VideoOverlay, drag: MutableRefObject<LayoutDrag | null>, onSelect: (id: string) => void) {
   event.stopPropagation();
-  const bounds = event.currentTarget.closest(".viewer")?.getBoundingClientRect();
+  const bounds = event.currentTarget.closest(".overlay-stage")?.getBoundingClientRect();
   const item = event.currentTarget.closest(".video-overlay-item")?.getBoundingClientRect();
   if (!bounds || !item) return;
   drag.current = { mode, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, x: overlay.layout.x, y: overlay.layout.y, overlayWidth: overlay.layout.width, overlayHeight: overlay.layout.height, pixelWidth: item.width, pixelHeight: item.height };

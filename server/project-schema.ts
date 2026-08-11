@@ -5,14 +5,15 @@ export function normalizeVideoProject(project: VideoProject): VideoProject {
   const overlays = (project.overlays || []).map((overlay) => ({ ...overlay, bundleId: overlay.bundleId || null }));
   const cutoutOverlays = project.cutoutOverlays || [];
   const videoOverlays = project.videoOverlays || [];
-  const textOverlays = project.textOverlays || [];
+  const subtitleState = normalizeSubtitleTrack(project);
+  const textOverlays = subtitleState.textOverlays;
   const exportHistory = (project.exportHistory || []).map((receipt, index) => normalizeExportReceipt(receipt, index + 1));
   const mediaLibrary = normalizeMediaLibrary(project.mediaLibrary || legacyMediaLibrary(project));
   const timeline = project.programTimeline || createProgramTimeline(project.scenes, mediaLibrary.primarySourceId, project.createdAt || "");
   const programTimeline = { ...timeline, deletedClips: timeline.deletedClips || [] };
   const recordingPlan = recordingPlanForProject({ ...project, mediaLibrary, programTimeline } as VideoProject);
   const editorPreferences = project.editorPreferences || { timelineWindow: "auto" };
-  return { ...project, schemaVersion: 1, revision: project.revision || 0, recordingPlan, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, videoOverlays, textOverlays, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
+  return { ...project, schemaVersion: 1, revision: project.revision || 0, recordingPlan, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, videoOverlays, textOverlays, subtitleTrack: subtitleState.subtitleTrack, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
 }
 
 export function validateVideoProject(input: VideoProject): VideoProject {
@@ -29,6 +30,7 @@ export function validateVideoProject(input: VideoProject): VideoProject {
   project.cutoutOverlays.forEach((overlay) => validateCutoutOverlay(project, overlay));
   project.videoOverlays.forEach((overlay) => validateVideoOverlay(project, overlay));
   project.textOverlays.forEach((overlay) => validateTextOverlay(project, overlay));
+  validateSubtitleTrack(project);
   if (project.pitchAnalysis) validatePitchReference(project.pitchAnalysis);
   project.exportHistory.forEach(validateExportReceipt);
   return project;
@@ -40,7 +42,7 @@ function validateTextOverlay(project: VideoProject, overlay: TextOverlay) {
   if (overlay.target.type === "selected-cut") assert(overlay.target.start >= 0 && overlay.target.end > overlay.target.start, `Invalid text interval: ${overlay.id}`);
   else validateTextClipTarget(project, overlay);
   assert(overlay.layout.x >= 0 && overlay.layout.x <= 1 && overlay.layout.y >= 0 && overlay.layout.y <= 1 && overlay.layout.maxWidth > 0 && overlay.layout.maxWidth <= 1, `Invalid text layout: ${overlay.id}`);
-  assert(overlay.style.fontFamily === "system-sans" && [400, 600, 700].includes(overlay.style.fontWeight) && overlay.style.fontSize >= 12 && overlay.style.fontSize <= 240, `Invalid text style: ${overlay.id}`);
+  assert(["system-sans", "classic-social"].includes(overlay.style.fontFamily) && [400, 600, 700].includes(overlay.style.fontWeight) && overlay.style.fontSize >= 12 && overlay.style.fontSize <= 240, `Invalid text style: ${overlay.id}`);
   assert(/^#[a-fA-F0-9]{6}$/.test(overlay.style.color) && overlay.opacity >= 0 && overlay.opacity <= 1 && Number.isInteger(overlay.layer), `Invalid text color/layer: ${overlay.id}`);
   assert(overlay.style.backgroundColor === null || /^#[a-fA-F0-9]{6}$/.test(overlay.style.backgroundColor), `Invalid text background: ${overlay.id}`);
   assert(overlay.style.strokeColor === null || /^#[a-fA-F0-9]{6}$/.test(overlay.style.strokeColor), `Invalid text stroke: ${overlay.id}`);
@@ -53,6 +55,32 @@ function validateTextClipTarget(project: VideoProject, overlay: TextOverlay) {
   const clip = project.programTimeline.clips.find((item) => item.id === target.clipId);
   assert(Boolean(clip) && clip!.sourceId === target.sourceId, `Unknown text clip target: ${overlay.id}`);
   assert(target.sourceStart >= clip!.sourceStart && target.sourceEnd <= clip!.sourceEnd + 0.001 && target.sourceEnd > target.sourceStart, `Text source interval exceeds clip: ${overlay.id}`);
+}
+
+function validateSubtitleTrack(project: VideoProject) {
+  const track = project.subtitleTrack;
+  assert(track.version === 1 && typeof track.visible === "boolean", "Invalid subtitle track.");
+  validateSubtitleStyle(track.style);
+  const ids = new Set<string>();
+  track.cues.forEach((cue) => validateSubtitleCue(project, cue, ids));
+  track.deletedCues.forEach((item) => { validateSubtitleCue(project, item.cue, ids); assert(Number.isInteger(item.formerIndex) && item.formerIndex >= 0 && Boolean(Date.parse(item.deletedAt)), `Invalid deleted subtitle context: ${item.cue.id}`); });
+}
+
+function validateSubtitleCue(project: VideoProject, cue: SubtitleCue, ids: Set<string>) {
+  assert(/^subtitle\.[a-z0-9.-]+$/.test(cue.id) && !ids.has(cue.id), `Invalid subtitle cue id: ${cue.id}`);
+  assert(cue.text.trim().length > 0 && cue.text.length <= 500, `Invalid subtitle cue text: ${cue.id}`);
+  assert(cue.target.type === "selected-cut" && cue.target.start >= 0 && cue.target.end > cue.target.start, `Invalid subtitle interval: ${cue.id}`);
+  assert(project.mediaLibrary.sources.some((source) => source.id === cue.provenance.sourceId), `Unknown subtitle source: ${cue.id}`);
+  assert(cue.provenance.clipId.startsWith("clip.") && cue.provenance.sourceStart >= 0 && cue.provenance.sourceEnd > cue.provenance.sourceStart, `Invalid subtitle provenance: ${cue.id}`);
+  assert(cue.provenance.wordStart >= 0 && cue.provenance.wordEnd >= cue.provenance.wordStart, `Invalid subtitle word interval: ${cue.id}`);
+  ids.add(cue.id);
+}
+
+function validateSubtitleStyle(style: SubtitleStyle) {
+  assert(["system-sans", "classic-social"].includes(style.fontFamily) && [400, 600, 700].includes(style.fontWeight), "Invalid subtitle font.");
+  assert(style.fontSize >= 12 && style.fontSize <= 240 && style.strokeWidth >= 0 && style.strokeWidth <= 12, "Invalid subtitle typography.");
+  assert(style.x >= 0 && style.x <= 1 && style.y >= 0 && style.y <= 1 && style.maxWidth > 0 && style.maxWidth <= 1, "Invalid subtitle placement.");
+  assert(Number.isInteger(style.layer) && style.opacity >= 0 && style.opacity <= 1 && style.anchor === "bottom", "Invalid subtitle compositing style.");
 }
 
 function validateRecordingPlan(project: VideoProject) {
@@ -315,6 +343,7 @@ function normalizeMediaLibrary(library: MediaLibrary): MediaLibrary {
 
 const emptySource = { sourceUrl: null, attribution: null, license: null };
 
-import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, MediaTranscriptReference, OverlayLayout, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, TextOverlay, VideoMediaMetadata, VideoMediaSource, VideoOverlay, VideoProject } from "../src/analysis-model";
+import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, MediaTranscriptReference, OverlayLayout, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, SubtitleCue, SubtitleStyle, TextOverlay, VideoMediaMetadata, VideoMediaSource, VideoOverlay, VideoProject } from "../src/analysis-model";
 import { createProgramTimeline } from "../src/ProgramTimelineModel";
 import { recordingPlanForProject } from "../src/RecordingPlanModel";
+import { normalizeSubtitleTrack } from "../src/SubtitleModel";

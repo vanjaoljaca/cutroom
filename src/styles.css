@@ -128,6 +128,11 @@ button:focus-visible,
 .image-overlay-item.selected .overlay-resize-handle, .cutout-overlay-item.selected .overlay-resize-handle, .video-overlay-item.selected .overlay-resize-handle { display: block; }
 .viewer:fullscreen { display: grid; place-items: center; background: #000; border: 0; }
 .viewer:fullscreen .video-paint-surface { width: auto; max-width: 100%; }
+.viewer:fullscreen .video-decoder,
+.viewer:fullscreen .video-paint-surface,
+.viewer:fullscreen .overlay-stage,
+.viewer:fullscreen .text-overlay-stage,
+.viewer:fullscreen .subtitle-stage { width: min(100vw, 56.25vh); height: min(100vh, 177.7778vw); inset: 50% auto auto 50%; transform: translate(-50%, -50%); }
 
 .workflow-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .workflow-steps {
@@ -491,7 +496,10 @@ button:focus-visible,
 .video-overlay-move-handle { width: 100%; height: 100%; overflow: hidden; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; color: inherit; background: transparent; cursor: grab; font-size: 9px; white-space: nowrap; }
 .video-overlay-move-handle b { overflow: hidden; text-overflow: ellipsis; }
 .video-overlay-move-handle i { margin-left: auto; font-style: normal; opacity: 0.65; }
-.text-overlay-stage { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.text-overlay-stage { position: absolute; inset: 0; z-index: 30; pointer-events: none; container-type: inline-size; }
+.subtitle-stage { position: absolute; inset: 0; z-index: 40; pointer-events: none; container-type: inline-size; }
+.subtitle-item { position: absolute; margin: 0; padding: .28em .36em; border: 1px solid transparent; overflow-wrap: break-word; white-space: normal; line-height: 1.08; pointer-events: auto; touch-action: none; }
+.subtitle-item.selected { border-color: #66d6ff; box-shadow: 0 0 0 1px rgb(102 214 255 / 45%); }
 .text-overlay-item { position: absolute; margin: 0; padding: 0.28em 0.36em; border: 1px solid transparent; overflow-wrap: break-word; white-space: normal; line-height: 1.08; pointer-events: auto; cursor: default; touch-action: none; }
 .text-overlay-item.selected { border-color: #f0c84b; box-shadow: 0 0 0 1px rgb(240 200 75 / 45%); cursor: move; }
 .text-overlay-item.selected::after { content: ""; width: 5px; height: 5px; position: absolute; right: -3px; bottom: -3px; border: 1px solid #171917; background: #f0c84b; border-radius: 50%; }
@@ -501,6 +509,15 @@ button:focus-visible,
 .text-overlay-summary { max-width: min(70%, 430px); height: 22px; position: absolute; z-index: 4; top: 3px; right: 4px; overflow: hidden; color: #f7e8a7; background: #252821; border: 1px solid #756b3d; border-radius: 2px; text-overflow: ellipsis; white-space: nowrap; }
 .text-overlay-move { min-width: 0; flex: 1; overflow: hidden; padding: 0 8px; border: 0; color: inherit; background: transparent; cursor: grab; font-size: 9px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .text-overlay-edge { width: 8px; padding: 0; border: 0; background: rgb(255 255 255 / 55%); cursor: ew-resize; }
+.subtitle-track { height: 36px; position: relative; border-bottom: 1px solid #292c29; background: #0f1416; order: 40; }
+.subtitle-track-label { order: 40; width: auto; border: 0; border-bottom: 1px solid #292c29; color: #8bdfff; background: #111719; font-size: 9px; text-align: left; }
+.subtitle-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #596568; font-size: 9px; }
+.subtitle-cue { height: 30px; position: absolute; top: 3px; min-width: 28px; display: flex; overflow: hidden; color: #eafaff; background: #17647a; border-radius: 2px; touch-action: none; }
+.subtitle-cue.selected { box-shadow: inset 0 0 0 1px #dff8ff, 0 0 0 1px #58d8ff; }
+.subtitle-cue.deleted { opacity: .42; background: #343b3d; text-decoration: line-through; }
+.subtitle-cue-body { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; overflow: hidden; padding: 0 7px; border: 0; color: inherit; background: transparent; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.subtitle-cue-body small { color: #b8d7de; font-size: 7px; font-weight: 500; }
+.subtitle-edge { width: 7px; padding: 0; border: 0; background: rgb(255 255 255 / 42%); cursor: ew-resize; }
 .text-editor-scrim { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 58%); }
 .text-editor { width: min(390px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 12px; border: 1px solid #4b4f49; background: #181a18; box-shadow: 0 18px 60px rgb(0 0 0 / 60%); }
 .text-editor header { display: flex; align-items: center; justify-content: space-between; }

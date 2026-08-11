@@ -35,6 +35,10 @@ async function handleProjectRequest(route: ProjectRoute, request: IncomingMessag
     if (route.action === "asset" && route.itemId && request.method === "GET") return serveAsset(route.id, route.itemId, response);
     if (route.action === "pitch" && request.method === "GET") return sendJson(response, 200, await readPitchArtifact(route.id));
     if (route.action === "pitch" && request.method === "POST") return sendJson(response, 200, await analyzeProjectPitch(route.id));
+    if (route.action === "subtitles" && request.method === "POST") return sendJson(response, 200, await subtitleCollection(route.id, request));
+    if (route.action === "subtitle-cue" && route.itemId && request.method === "PATCH") return sendJson(response, 200, await editSubtitle(route.id, route.itemId, JSON.parse(await readBody(request)) as SubtitleEditInput));
+    if (route.action === "subtitle-cue" && route.itemId && request.method === "DELETE") return sendJson(response, 200, await removeSubtitle(route.id, route.itemId, revisionInput(await readBody(request))));
+    if (route.action === "subtitle-cue" && route.itemId && request.method === "POST") return sendJson(response, 200, await restoreSubtitle(route.id, route.itemId, revisionInput(await readBody(request))));
     if (route.action === "exports" && request.method === "GET") return sendJson(response, 200, await exportOverview(route.id));
     if (route.action === "exports" && request.method === "POST") return sendJson(response, 202, await startExportJob(route.id, await exportPreset(request)));
     if (route.action === "export-job" && route.itemId && request.method === "GET") return sendJson(response, 200, exportJobStatus(route.id, route.itemId));
@@ -59,6 +63,16 @@ async function updateProject(id: string, request: IncomingMessage) {
   log("project_saved", { id });
   return saved;
 }
+
+async function subtitleCollection(id: string, request: IncomingMessage) {
+  const input = JSON.parse(await readBody(request)) as { operation?: string; revision?: number; dryRun?: boolean; cues?: SubtitleCue[] };
+  if (input.operation === "generate" && input.dryRun) return previewGeneratedSubtitles(id);
+  if (input.operation === "generate" && Number.isInteger(input.revision)) return generateSubtitles(id, input.revision!);
+  if (input.operation === "import" && Number.isInteger(input.revision) && Array.isArray(input.cues)) return importSubtitles(id, input.revision!, input.cues);
+  throw new Error("Subtitle operation requires generate/import and a valid revision.");
+}
+
+function revisionInput(body: string) { const revision = (JSON.parse(body) as { revision?: number }).revision; if (!Number.isInteger(revision)) throw new Error("Subtitle revision is required."); return revision!; }
 
 async function renameStoredProject(id: string, request: IncomingMessage) {
   const input = JSON.parse(await readBody(request)) as { title?: string; revision?: number };
@@ -170,13 +184,15 @@ function parseRoute(rawUrl = "/"): ProjectRoute | null {
   if (transcript) return { id: transcript[1], action: "media-transcript", itemId: transcript[2] };
   const media = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/(media\.[a-z0-9.]+)$/);
   if (media) return { id: media[1], action: "media-source", itemId: media[2] };
+  const subtitleCue = path.match(/^\/api\/projects\/([a-z0-9-]+)\/subtitles\/(subtitle\.[a-z0-9.-]+)$/);
+  if (subtitleCue) return { id: subtitleCue[1], action: "subtitle-cue", itemId: subtitleCue[2] };
   const file = path.match(/^\/api\/projects\/([a-z0-9-]+)\/exports\/(export-[a-z0-9-]+)\/file$/);
   if (file) return { id: file[1], action: "export-file", itemId: file[2] };
   const job = path.match(/^\/api\/projects\/([a-z0-9-]+)\/exports\/(export-[a-z0-9-]+)$/);
   if (job) return { id: job[1], action: "export-job", itemId: job[2] };
   const asset = path.match(/^\/api\/projects\/([a-z0-9-]+)\/assets\/([a-z0-9-]+)$/);
   if (asset) return { id: asset[1], action: "asset", itemId: asset[2] };
-  const route = path.match(/^\/api\/projects\/([a-z0-9-]+)(?:\/(media|pitch|exports|cutouts))?$/);
+  const route = path.match(/^\/api\/projects\/([a-z0-9-]+)(?:\/(media|pitch|exports|cutouts|subtitles))?$/);
   return route ? { id: route[1], action: (route[2] || "project") as ProjectAction, itemId: null } : null;
 }
 
@@ -218,7 +234,7 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: "cutroom-projects", event, ...details }));
 }
 
-type ProjectAction = "catalog" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "exports" | "export-job" | "export-file";
+type ProjectAction = "catalog" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "subtitles" | "subtitle-cue" | "exports" | "export-job" | "export-file";
 type ProjectRoute = { id: string; action: ProjectAction; itemId: string | null };
 type ByteRange = { start: number; end: number };
 
@@ -227,7 +243,7 @@ import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import type { Plugin } from "vite";
-import type { ExportPreset, VideoProject } from "../src/analysis-model";
+import type { ExportPreset, SubtitleCue, VideoProject } from "../src/analysis-model";
 import type { CreateCutoutInput } from "../src/CutoutModel";
 import { projectsRoot } from "./media-analysis";
 import { analyzeProjectPitch, readPitchArtifact } from "./pitch-analysis";
@@ -239,3 +255,4 @@ import { cancelExportJob, exportJobStatus, exportOverview, startExportJob } from
 import { listProjects, renameProject, trashProject } from "./ProjectCatalog";
 import { durableCutoutJobStatus, startCutoutJob } from "./CutoutJobs";
 import { attachRawMedia, detachRawMedia, ingestRawMedia, readRawMediaLibrary } from "./RawMediaLibrary";
+import { editSubtitle, generateSubtitles, importSubtitles, previewGeneratedSubtitles, removeSubtitle, restoreSubtitle, type SubtitleEditInput } from "./SubtitleService";

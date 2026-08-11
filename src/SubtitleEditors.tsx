@@ -1,0 +1,44 @@
+export function SubtitleStage({ project, cutTime, selectedId, onSelect }: SubtitleStageProps) {
+  return <div className="subtitle-stage" aria-label="Subtitles">{subtitleIntervals(project).map(({ cue, start, end }) => <button key={cue.id} className={`subtitle-item ${selectedId === cue.id ? "selected" : ""}`} aria-label={`Select subtitle ${cue.text}`} style={textOverlayStyle(subtitleAsTextOverlay(project, cue), cutTime >= start && cutTime <= end)} onClick={() => onSelect(cue.id)}>{cue.text}</button>)}</div>;
+}
+
+export function SubtitleTrackLane(props: SubtitleTrackLaneProps) {
+  const { project, duration, playhead, selectedId, viewDeleted, onTrackUpdate } = props;
+  const [settings, setSettings] = useState(false);
+  return <><button className="timeline-track-label subtitle-track-label" aria-label="Subtitle track settings" title="Subtitle track settings" onClick={() => setSettings(true)}>Subtitles</button><div className="subtitle-track timeline-track-content"><span className="subtitle-empty">{project.subtitleTrack.cues.length ? "" : "No subtitles"}</span>{subtitleIntervals(project).map((interval) => <SubtitleClip key={interval.cue.id} interval={interval} deleted={false} {...props} />)}{viewDeleted && project.subtitleTrack.deletedCues.map(({ cue }) => <SubtitleClip key={cue.id} interval={{ cue, start: cue.target.start, end: cue.target.end }} deleted {...props} />)}<span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div>{settings && <SubtitleSettings project={project} onClose={() => setSettings(false)} onUpdate={onTrackUpdate} />}</>;
+}
+
+function SubtitleClip({ interval, duration, selectedId, deleted, playheadTime, onSelect, onTimingChange, onUpdate, onDelete, onRestore, onSplit }: SubtitleClipProps) {
+  const drag = useRef<SubtitleDrag | null>(null); const [editing, setEditing] = useState(false); const { cue, start, end } = interval;
+  function begin(event: ReactPointerEvent<HTMLButtonElement>, mode: SubtitleDrag["mode"]) { if (deleted) return; const bounds = event.currentTarget.closest(".subtitle-track")?.getBoundingClientRect(); if (!bounds) return; event.stopPropagation(); drag.current = { mode, origin: event.clientX, width: bounds.width, start, end, nextStart: start, nextEnd: end }; event.currentTarget.setPointerCapture(event.pointerId); onSelect(cue.id, start); }
+  function move(event: ReactPointerEvent<HTMLButtonElement>) { if (!drag.current) return; const delta = ((event.clientX - drag.current.origin) / drag.current.width) * duration; const next = moved(drag.current, delta, duration); drag.current.nextStart = next.start; drag.current.nextEnd = next.end; onTimingChange(cue.id, next.start, next.end, false); }
+  function finish() { if (drag.current && (drag.current.nextStart !== drag.current.start || drag.current.nextEnd !== drag.current.end)) onTimingChange(cue.id, drag.current.nextStart, drag.current.nextEnd, true); drag.current = null; }
+  const style = { left: `${(start / duration) * 100}%`, width: `${Math.max(((end - start) / duration) * 100, 0.6)}%` };
+  return <><div className={`subtitle-cue ${selectedId === cue.id ? "selected" : ""} ${deleted ? "deleted" : ""}`} style={style} title={`${cue.text} · ${clock(start)}–${clock(end)}`} onContextMenu={(event) => { event.preventDefault(); onSelect(cue.id, start); setEditing(true); }}><button className="subtitle-edge start" aria-label={`Trim start of subtitle ${cue.text}`} onPointerDown={(event) => begin(event, "start")} onPointerMove={move} onPointerUp={finish} /><button className="subtitle-cue-body" aria-label={`Select subtitle ${cue.text}, ${clock(start)} to ${clock(end)}`} onClick={() => onSelect(cue.id, start)} onDoubleClick={() => setEditing(true)} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}>{cue.text}<small>{clock(start)}–{clock(end)}</small></button><button className="subtitle-edge end" aria-label={`Trim end of subtitle ${cue.text}`} onPointerDown={(event) => begin(event, "end")} onPointerMove={move} onPointerUp={finish} /></div>{editing && <SubtitleEditor cue={cue} deleted={deleted} playheadTime={playheadTime} onClose={() => setEditing(false)} onUpdate={onUpdate} onDelete={onDelete} onRestore={onRestore} onSplit={onSplit} />}</>;
+}
+
+function SubtitleEditor({ cue, deleted, playheadTime, onClose, onUpdate, onDelete, onRestore, onSplit }: SubtitleEditorProps) {
+  const [text, setText] = useState(cue.text);
+  return <div className="text-editor-scrim" onPointerDown={onClose}><section className="text-editor subtitle-editor" role="dialog" aria-modal="true" aria-label="Edit subtitle" onPointerDown={(event) => event.stopPropagation()}><header><strong>Subtitle · {clock(cue.target.start)}–{clock(cue.target.end)}</strong><button aria-label="Close subtitle editor" onClick={onClose}>×</button></header><textarea aria-label="Subtitle text" value={text} onChange={(event) => setText(event.target.value)} />{!deleted && <button onClick={() => onSplit(cue.id, playheadTime)}>Split at playhead</button>}{deleted ? <button onClick={() => { onRestore(cue.id); onClose(); }}>Restore subtitle</button> : <button onClick={() => { onDelete(cue.id); onClose(); }}>Delete subtitle</button>}<button onClick={() => { onUpdate({ ...cue, text: text.trim() }); onClose(); }}>Save</button></section></div>;
+}
+
+function SubtitleSettings({ project, onClose, onUpdate }: SubtitleSettingsProps) {
+  const track = project.subtitleTrack;
+  return <div className="text-editor-scrim" onPointerDown={onClose}><section className="text-editor subtitle-editor" role="dialog" aria-modal="true" aria-label="Subtitle track settings" onPointerDown={(event) => event.stopPropagation()}><header><strong>Subtitles</strong><button aria-label="Close subtitle settings" onClick={onClose}>×</button></header><label><input type="checkbox" checked={track.visible} onChange={(event) => onUpdate({ ...track, visible: event.target.checked })} /> Show subtitles</label><label>Safe-zone height<input aria-label="Subtitle vertical position" type="range" min="0.55" max="0.92" step="0.01" value={track.style.y} onChange={(event) => onUpdate({ ...track, style: { ...track.style, y: Number(event.target.value) } })} /></label><label>Size<input aria-label="Subtitle font size" type="number" min="12" max="240" value={track.style.fontSize} onChange={(event) => onUpdate({ ...track, style: { ...track.style, fontSize: Number(event.target.value) } })} /></label><label><input type="checkbox" checked={track.style.backgroundColor !== null} onChange={(event) => onUpdate({ ...track, style: { ...track.style, backgroundColor: event.target.checked ? "#000000" : null } })} /> Background plaque</label></section></div>;
+}
+
+function moved(drag: SubtitleDrag, delta: number, duration: number) { if (drag.mode === "start") return { start: clamp(drag.start + delta, 0, drag.end - 0.04), end: drag.end }; if (drag.mode === "end") return { start: drag.start, end: clamp(drag.end + delta, drag.start + 0.04, duration) }; const length = drag.end - drag.start; const start = clamp(drag.start + delta, 0, duration - length); return { start, end: start + length }; }
+function clamp(value: number, minimum: number, maximum: number) { return Math.max(minimum, Math.min(maximum, value)); }
+function clock(seconds: number) { const minutes = Math.floor(seconds / 60); return `${minutes}:${(seconds % 60).toFixed(2).padStart(5, "0")}`; }
+
+type SubtitleStageProps = { project: VideoProject; cutTime: number; selectedId: string | null; onSelect: (id: string) => void };
+type SubtitleTrackLaneProps = { project: VideoProject; duration: number; playhead: string; playheadTime: number; selectedId: string | null; viewDeleted: boolean; onSelect: (id: string, start: number) => void; onTimingChange: (id: string, start: number, end: number, persist: boolean) => void; onUpdate: (cue: SubtitleCue) => void; onDelete: (id: string) => void; onRestore: (id: string) => void; onSplit: (id: string, at: number) => void; onTrackUpdate: (track: SubtitleTrack) => void };
+type SubtitleClipProps = SubtitleTrackLaneProps & { interval: SubtitleInterval; deleted: boolean };
+type SubtitleEditorProps = { cue: SubtitleCue; deleted: boolean; playheadTime: number; onClose: () => void; onUpdate: (cue: SubtitleCue) => void; onDelete: (id: string) => void; onRestore: (id: string) => void; onSplit: (id: string, at: number) => void };
+type SubtitleSettingsProps = { project: VideoProject; onClose: () => void; onUpdate: (track: SubtitleTrack) => void };
+type SubtitleDrag = { mode: "move" | "start" | "end"; origin: number; width: number; start: number; end: number; nextStart: number; nextEnd: number };
+
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import type { SubtitleCue, SubtitleTrack, VideoProject } from "./analysis-model";
+import { subtitleAsTextOverlay, subtitleIntervals, type SubtitleInterval } from "./SubtitleModel";
+import { textOverlayStyle } from "./TextOverlayEditors";

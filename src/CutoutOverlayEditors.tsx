@@ -19,7 +19,7 @@ function EditableCutout({ projectId, interval, cutTime, playing, visible, select
   useEffect(() => { void synchronizeOverlayPlayback(videoRef.current, cutTime - interval.start, visible, playing); }, [cutTime, interval.start, playing, visible]);
   function begin(event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode) {
     event.stopPropagation();
-    const bounds = event.currentTarget.closest(".viewer")?.getBoundingClientRect();
+    const bounds = event.currentTarget.closest(".overlay-stage")?.getBoundingClientRect();
     const overlayBounds = event.currentTarget.closest(".cutout-overlay-item")?.getBoundingClientRect();
     if (!bounds || !overlayBounds) return;
     drag.current = { mode, clientX: event.clientX, clientY: event.clientY, width: bounds.width, height: bounds.height, x: interval.overlay.layout.x, y: interval.overlay.layout.y, overlayWidth: interval.overlay.layout.width, overlayHeight: interval.overlay.layout.height, pixelWidth: overlayBounds.width, pixelHeight: overlayBounds.height };

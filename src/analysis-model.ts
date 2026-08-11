@@ -54,6 +54,7 @@ export type VideoProject = AnalysisResult & {
   cutoutOverlays: SubjectCutoutOverlay[];
   videoOverlays: VideoOverlay[];
   textOverlays: TextOverlay[];
+  subtitleTrack: SubtitleTrack;
   pitchAnalysis: PitchAnalysisReference | null;
   exportHistory: ExportReceipt[];
 };
@@ -255,13 +256,33 @@ export type TextOverlay = {
   text: string;
   target: { type: "selected-cut"; start: number; end: number } | { type: "program-clip"; clipId: string; sourceId: string; sourceStart: number; sourceEnd: number };
   layout: { anchor: "top" | "center" | "bottom"; x: number; y: number; maxWidth: number; safeZone: boolean };
-  style: { fontFamily: "system-sans"; fontSize: number; fontWeight: 400 | 600 | 700; color: string; backgroundColor: string | null; strokeColor: string | null; strokeWidth: number; shadow: boolean; align: "left" | "center" | "right" };
+  style: { fontFamily: "system-sans" | "classic-social"; fontSize: number; fontWeight: 400 | 600 | 700; color: string; backgroundColor: string | null; strokeColor: string | null; strokeWidth: number; shadow: boolean; align: "left" | "center" | "right" };
   layer: number;
   opacity: number;
   enabled: boolean;
   provenance: { sourceId: string | null; attribution: string | null };
   createdAt: string;
 };
+
+export type SubtitleTrack = {
+  version: 1;
+  visible: boolean;
+  style: SubtitleStyle;
+  cues: SubtitleCue[];
+  deletedCues: DeletedSubtitleCue[];
+};
+
+export type SubtitleCue = {
+  id: string;
+  text: string;
+  target: { type: "selected-cut"; start: number; end: number };
+  provenance: { sourceId: string; clipId: string; sourceStart: number; sourceEnd: number; wordStart: number; wordEnd: number };
+  createdAt: string;
+};
+
+export type DeletedSubtitleCue = { cue: SubtitleCue; formerIndex: number; deletedAt: string };
+
+export type SubtitleStyle = TextOverlay["style"] & { anchor: "bottom"; x: number; y: number; maxWidth: number; safeZone: boolean; layer: number; opacity: number };
 
 export type CutoutProcessing = {
   provider: "rembg-u2net-human";

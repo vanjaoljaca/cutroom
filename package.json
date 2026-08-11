@@ -20,6 +20,7 @@
     "video-overlay:attach": "vite-node scripts/AttachVideoOverlay.ts",
     "text:attach": "vite-node scripts/AttachTextOverlay.ts",
     "captions:generate": "vite-node scripts/GenerateCaptions.ts",
+    "subtitles": "vite-node scripts/Subtitles.ts",
     "overlay:bundle": "vite-node scripts/AttachBundleToOverlay.ts",
     "overlay:remove": "vite-node scripts/RemoveProjectOverlay.ts",
     "pitch:analyze": "vite-node scripts/AnalyzeProjectPitch.ts",
