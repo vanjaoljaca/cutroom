@@ -10,6 +10,8 @@ export function App() {
   const [mode, setMode] = useState<ViewMode>("cut");
   const [workflowStep, setWorkflowStep] = useState<WorkflowStep>("cut");
   const [recordingPreviewId, setRecordingPreviewId] = useState<string | null>(null);
+  const [recordingPreviewProject, setRecordingPreviewProject] = useState<VideoProject | null>(null);
+  const [recordingOutputProjects, setRecordingOutputProjects] = useState<Record<string, VideoProject>>({});
   const [activeRange, setActiveRange] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -37,6 +39,7 @@ export function App() {
   const downloadedExportsRef = useRef(new Set<string>());
   const syncedExportsRef = useRef(new Set<string>());
   const pendingMediaRef = useRef<PendingMediaLoad | null>(null);
+  const recordingPreviewRequestRef = useRef(0);
   if (!saveQueueRef.current) saveQueueRef.current = new ProjectSaveQueue(saveProject, setSaveStatus);
 
   useObjectUrlCleanup(source);
@@ -60,8 +63,21 @@ export function App() {
     downloadCompletedExport(project?.id || null, exportStatus, downloadedExportsRef.current);
     void syncCompletedExport(exportStatus);
   }, [project?.id, exportStatus]);
+  useEffect(() => {
+    if (workflowStep !== "projects" || !project) return;
+    let cancelled = false;
+    const outputs = recordingPlanForProject(project).outputs.filter((output) => output.status === "ready");
+    void Promise.allSettled(outputs.map((output) => loadVideoProject(output.projectId))).then((results) => {
+      if (cancelled) return;
+      const loaded = Object.fromEntries(results.flatMap((result, index) => result.status === "fulfilled" ? [[outputs[index].id, result.value]] : []));
+      setRecordingOutputProjects(loaded);
+      logEvent("recording_output_projects_loaded", { projectId: project.id, requested: outputs.length, loaded: Object.keys(loaded).length });
+    });
+    return () => { cancelled = true; };
+  }, [workflowStep, project?.id]);
 
   const assembledDuration = cutDuration(ranges);
+  const playbackProject = workflowStep === "projects" && recordingPreviewProject ? recordingPreviewProject : project;
   const displayRange = Math.min(activeRange, Math.max(0, ranges.length - 1));
   const displayTime = mode === "cut" && ranges.length
     ? cutTimeFromSource(ranges, displayRange, currentTime)
@@ -72,7 +88,7 @@ export function App() {
     const nextDuration = videoRef.current?.duration || 0;
     setDuration(nextDuration);
     paintCurrentVideo();
-    if (project && activeSourceId(source.url) === project.mediaLibrary.primarySourceId) setOriginalDuration(nextDuration);
+    if (project && source.url === sourceState(project, project.mediaLibrary.primarySourceId).url) setOriginalDuration(nextDuration);
     applyPendingMediaLoad();
     logEvent("video_loaded", { duration: nextDuration, name: source.name });
   }
@@ -131,19 +147,19 @@ export function App() {
 
   function switchMediaSource(rangeIndex: number, time: number, play: boolean) {
     if (mode !== "cut") return false;
-    const sourceId = ranges[rangeIndex]?.sourceId || project?.mediaLibrary.primarySourceId;
-    if (!project || !sourceId || activeSourceId(source.url) === sourceId) return false;
+    const sourceId = ranges[rangeIndex]?.sourceId || playbackProject?.mediaLibrary.primarySourceId;
+    if (!playbackProject || !sourceId || source.url === sourceState(playbackProject, sourceId).url) return false;
     switchToSource(sourceId, time, rangeIndex, play);
     return true;
   }
 
   function switchToSource(sourceId: string, time: number, rangeIndex: number, play: boolean) {
-    if (!project) return;
+    if (!playbackProject) return;
     pendingMediaRef.current = { time, rangeIndex, play };
     setCurrentTime(time);
     activeRangeRef.current = rangeIndex;
     setActiveRange(rangeIndex);
-    setSource(sourceState(project, sourceId));
+    setSource(sourceState(playbackProject, sourceId));
   }
 
   function switchOrSeek(time: number, rangeIndex: number) {
@@ -185,54 +201,89 @@ export function App() {
   }
 
   function changeMode(nextMode: ViewMode) {
+    recordingPreviewRequestRef.current += 1;
     setTakePreview(null);
     setSourceBrowserOpen(false);
     setRecordingPreviewId(null);
+    setRecordingPreviewProject(null);
     setMode(nextMode);
     setWorkflowStep(nextMode);
     const projectRanges = project ? programRanges(project) : ranges;
     setRanges(projectRanges);
     if (nextMode === "cut" && projectRanges.length) seekProjectRange(projectRanges[0]);
-    if (nextMode === "original" && project) switchToSource(project.mediaLibrary.primarySourceId, 0, 0, false);
+    if (nextMode === "original" && project) setRawRecordingPreview(project, 0);
     logEvent("timeline_mode_changed", { mode: nextMode });
   }
 
   function seekProjectRange(range: SourceRange) {
     const sourceId = range.sourceId || project?.mediaLibrary.primarySourceId;
-    if (sourceId && activeSourceId(source.url) !== sourceId) switchToSource(sourceId, range.start, 0, false);
+    if (project && sourceId && source.url !== sourceState(project, sourceId).url) {
+      pendingMediaRef.current = { time: range.start, rangeIndex: 0, play: false };
+      setSource(sourceState(project, sourceId));
+    }
     else seekOnCurrentSource(range.start, 0);
   }
 
   function showRecordingPlan() {
+    recordingPreviewRequestRef.current += 1;
     setTakePreview(null);
     setSourceBrowserOpen(false);
     setWorkflowStep("projects");
     setMode("original");
     setRecordingPreviewId(null);
-    if (project) switchToSource(recordingPlanForProject(project).sourceId, 0, 0, false);
+    setRecordingPreviewProject(null);
+    if (project) setRawRecordingPreview(project, 0);
     logEvent("recording_plan_opened", { projectId: project?.id || "" });
   }
 
   function previewRecordingSource(time: number) {
     if (!project) return;
-    const plan = recordingPlanForProject(project);
+    recordingPreviewRequestRef.current += 1;
+    videoRef.current?.pause();
     setRecordingPreviewId(null);
+    setRecordingPreviewProject(null);
+    setSelectedOverlayId(null);
     setMode("original");
-    if (activeSourceId(source.url) !== plan.sourceId) switchToSource(plan.sourceId, time, 0, false);
-    else seekOnCurrentSource(time, 0);
+    setRawRecordingPreview(project, time);
+    logEvent("recording_viewer_selected", { kind: "raw", projectId: project.id, sourceTime: time });
   }
 
-  function previewRecordingOutput(output: RecordingPlanOutput) {
+  async function previewRecordingOutput(output: RecordingPlanOutput) {
     if (!project) return;
-    const previewRanges = recordingOutputRanges(recordingPlanForProject(project), output);
-    if (!previewRanges.length) return;
+    const requestId = ++recordingPreviewRequestRef.current;
+    videoRef.current?.pause();
     setRecordingPreviewId(output.id);
-    setRanges(previewRanges);
-    setMode("cut");
-    const first = previewRanges[0];
-    const sourceId = first.sourceId || recordingPlanForProject(project).sourceId;
-    if (activeSourceId(source.url) !== sourceId) switchToSource(sourceId, first.start, 0, true);
-    else void playAt(first.start, 0);
+    setSelectedOverlayId(null);
+    try {
+      const selectedProject = recordingOutputProjects[output.id] || await loadVideoProject(output.projectId);
+      if (requestId !== recordingPreviewRequestRef.current) return;
+      const selection = projectRecordingViewer(output, selectedProject);
+      const previewRanges = selection.ranges;
+      setRecordingOutputProjects((current) => ({ ...current, [output.id]: selectedProject }));
+      setRecordingPreviewProject(selectedProject);
+      setRanges(previewRanges);
+      setMode(selection.mode);
+      pendingMediaRef.current = { time: selection.sourceTime, rangeIndex: 0, play: false };
+      setCurrentTime(selection.sourceTime);
+      activeRangeRef.current = 0;
+      setActiveRange(0);
+      setSource(sourceState(selectedProject, selection.sourceId));
+      logEvent("recording_viewer_selected", { kind: selection.kind, hostProjectId: project.id, projectId: selectedProject.id, outputId: output.id, clips: previewRanges.length, duration: selection.duration || 0 });
+    } catch (error) {
+      if (requestId !== recordingPreviewRequestRef.current) return;
+      setRecordingPreviewId(null);
+      setProjectError(error instanceof Error ? error.message : "Could not preview output project.");
+      logError("recording_output_preview_failed", error);
+    }
+  }
+
+  function setRawRecordingPreview(hostProject: VideoProject, time: number) {
+    const selection = rawRecordingViewer(hostProject, time);
+    pendingMediaRef.current = { time: selection.sourceTime, rangeIndex: 0, play: false };
+    setCurrentTime(selection.sourceTime);
+    activeRangeRef.current = 0;
+    setActiveRange(0);
+    setSource(sourceState(hostProject, selection.sourceId));
   }
 
   function seekFromTimeline(event: MouseEvent<HTMLDivElement>) {
@@ -266,6 +317,8 @@ export function App() {
     setSelectedOverlayId(null);
     setTakePreview(null);
     setRecordingPreviewId(null);
+    setRecordingPreviewProject(null);
+    setRecordingOutputProjects({});
   }
 
   async function openPitch() {
@@ -457,7 +510,7 @@ export function App() {
     setMode("original");
     setWorkflowStep("original");
     setTakePreview({ sceneId, takeId: take.id, start: take.start, end: take.end });
-    if (activeSourceId(source.url) !== sourceId) switchToSource(sourceId, take.start, 0, true);
+    if (project && source.url !== sourceState(project, sourceId).url) switchToSource(sourceId, take.start, 0, true);
     else await playTakeOnCurrentSource(video, take.start);
     logEvent("take_preview_started", { sceneId, takeId: take.id, start: take.start, end: take.end });
   }
@@ -509,6 +562,11 @@ export function App() {
     {project && workflowStep !== "projects" && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
     {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
     {project && workflowStep !== "projects" && <VideoOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeVideoOverlayLayout} />}
+    {recordingPreviewProject && workflowStep === "projects" && <div className="recording-preview-overlays" inert>
+      <EditableOverlayStage project={recordingPreviewProject} mode="cut" sourceTime={currentTime} cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
+      <CutoutOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
+      <VideoOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
+    </div>}
   </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
 
   const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={project?.id || null} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
@@ -536,7 +594,7 @@ export function App() {
         {workflowStep !== "projects" && !ranges.length && <p className="no-cut-note">No take selected. Ask the video task to revise this project.</p>}
         {projectError && <p className="analysis-error">{projectError}</p>}
 
-        {workflowStep === "projects" && project && <div className="recording-plan-phase"><RecordingSourceTimeline project={project} duration={duration} thumbnails={thumbnails} waveform={waveform} currentTime={currentTime} onSeek={previewRecordingSource} /><div className="recording-plan-workspace"><RecordingPlanPanel project={project} selectedOutputId={recordingPreviewId} onPreview={previewRecordingOutput} /><div className="recording-preview-column">{videoPreview}{playerControls}</div></div></div>}
+        {workflowStep === "projects" && project && <div className="recording-plan-phase"><RecordingSourceTimeline project={project} duration={originalDuration || duration} thumbnails={thumbnails} waveform={waveform} currentTime={recordingPreviewId === null ? currentTime : 0} selected={recordingPreviewId === null} onSeek={previewRecordingSource} onSelect={() => previewRecordingSource(0)} /><div className="recording-plan-workspace"><RecordingPlanPanel project={project} outputProjects={recordingOutputProjects} selectedOutputId={recordingPreviewId} onPreview={previewRecordingOutput} /><div className="recording-preview-column">{videoPreview}{playerControls}</div></div></div>}
         {workflowStep === "original" && <div className="phase-preview original"><div className="selection-phase">{playerControls}{project && <AnalysisPanel project={project} duration={originalDuration} previewTakeId={takePreview?.takeId || null} onSeek={seekTo} onUpdate={updateTake} onSelect={selectTake} onPreview={previewTake} />}</div>{videoPreview}</div>}
         {workflowStep === "cut" && <><div className="phase-preview cut">{videoPreview}</div><div className="edit-phase">{playerControls}
           <Timeline
@@ -570,24 +628,30 @@ export function App() {
   );
 }
 
-function RecordingSourceTimeline({ project, duration, thumbnails, waveform, currentTime, onSeek }: RecordingSourceTimelineProps) {
+function RecordingSourceTimeline({ project, duration, thumbnails, waveform, currentTime, selected, onSeek, onSelect }: RecordingSourceTimelineProps) {
   const plan = recordingPlanForProject(project);
   const sourceDuration = recordingPlanDuration(plan, duration);
   function seek(event: MouseEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     onSeek(((event.clientX - bounds.left) / bounds.width) * sourceDuration);
   }
-  return <section className="recording-source-section" aria-label="Full source recording"><header><strong>{plan.sourceLabel}</strong><span>{formatTime(sourceDuration)}</span></header><div className="recording-source-timeline" role="slider" tabIndex={0} aria-label="Full recording timeline" onClick={seek}><ThumbnailStrip thumbnails={thumbnails} /><Waveform peaks={waveform} />{plan.outputs.flatMap((output, outputIndex) => output.sourceRanges.map((range, rangeIndex) => <span className="recording-source-range" key={`${output.id}.${rangeIndex}`} style={{ left: `${(range.start / sourceDuration) * 100}%`, width: `${((range.end - range.start) / sourceDuration) * 100}%`, "--recording-color": segmentColors[outputIndex % segmentColors.length] } as CSSProperties} />))}<TrackPlayhead playhead={`${(currentTime / sourceDuration) * 100}%`} /></div></section>;
+  return <section className={`recording-source-section ${selected ? "selected" : ""}`} aria-label="Full source recording"><header><button className="recording-source-selector" aria-label={`View full source recording ${plan.sourceLabel}`} aria-pressed={selected} onClick={onSelect} onKeyDown={(event) => activateRecordingButton(event, onSelect)}><strong>{plan.sourceLabel}</strong><span>{formatTime(sourceDuration)}</span></button></header><div className="recording-source-timeline" role="slider" tabIndex={0} aria-label="Full recording timeline" onClick={seek}><ThumbnailStrip thumbnails={thumbnails} /><Waveform peaks={waveform} />{plan.outputs.flatMap((output, outputIndex) => output.sourceRanges.map((range, rangeIndex) => <span className="recording-source-range" key={`${output.id}.${rangeIndex}`} style={{ left: `${(range.start / sourceDuration) * 100}%`, width: `${((range.end - range.start) / sourceDuration) * 100}%`, "--recording-color": segmentColors[outputIndex % segmentColors.length] } as CSSProperties} />))}<TrackPlayhead playhead={`${(currentTime / sourceDuration) * 100}%`} /></div></section>;
 }
 
-function RecordingPlanPanel({ project, selectedOutputId, onPreview }: RecordingPlanPanelProps) {
+function RecordingPlanPanel({ project, outputProjects, selectedOutputId, onPreview }: RecordingPlanPanelProps) {
   const plan = recordingPlanForProject(project);
-  return <section className="recording-plan-panel" aria-label="Recording projects"><header><span>Output projects</span><strong>{plan.outputs.length}</strong></header><ol className="recording-output-list">{plan.outputs.map((output, index) => <li key={output.id} className={`${output.projectId === project.id ? "current" : ""} ${selectedOutputId === output.id ? "selected" : ""}`}><div className="recording-output-heading"><span className="recording-output-number">{index + 1}</span><div><a href={canonicalProjectPath(output.projectId)}>{output.projectTitle}</a><p>{output.summary || outputRangeSummary(output)}</p></div><span className={`recording-output-intent ${output.intent}`}>{output.intent === "new" ? "New" : "Existing"}</span><span className={`recording-output-status ${output.status}`}>{output.status === "ready" ? "Ready" : "Planned"}</span></div><MiniProjectTimeline output={output} selected={selectedOutputId === output.id} onPreview={() => onPreview(output)} /></li>)}</ol></section>;
+  return <section className="recording-plan-panel" aria-label="Recording projects"><header><span>Output projects</span><strong>{plan.outputs.length}</strong></header><ol className="recording-output-list">{plan.outputs.map((output, index) => { const outputProject = outputProjects[output.id]; const previewRanges = outputProject ? programRanges(outputProject) : recordingOutputRanges(plan, output); const preview = () => { void onPreview(output); }; return <li key={output.id} className={`${output.projectId === project.id ? "current" : ""} ${selectedOutputId === output.id ? "selected" : ""}`}><button className="recording-output-card" aria-label={`View assembled project ${output.projectTitle}`} aria-pressed={selectedOutputId === output.id} onClick={preview} onKeyDown={(event) => activateRecordingButton(event, preview)}><div className="recording-output-heading"><span className="recording-output-number">{index + 1}</span><div><strong className="recording-output-title">{output.projectTitle}</strong><p>{outputProject ? `${outputProject.scenes.length} scenes · ${formatTime(cutDuration(previewRanges))}` : output.summary || outputRangeSummary(output)}</p></div><span className={`recording-output-intent ${output.intent}`}>{output.intent === "new" ? "New" : "Existing"}</span><span className={`recording-output-status ${output.status}`}>{output.status === "ready" ? "Ready" : "Planned"}</span></div><MiniProjectTimeline output={output} ranges={previewRanges} /></button></li>; })}</ol></section>;
 }
 
-function MiniProjectTimeline({ output, selected, onPreview }: MiniProjectTimelineProps) {
-  const total = recordingPlanCoverage(output);
-  return <button className="recording-output-preview" aria-label={`Preview ${output.projectTitle}`} aria-pressed={selected} disabled={!output.sourceRanges.length} onClick={onPreview}>{output.sourceRanges.map((range, index) => <span key={`${output.id}.preview.${index}`} style={{ width: `${((range.end - range.start) / total) * 100}%` }}><i>{formatTime(range.end - range.start)}</i></span>)}</button>;
+function activateRecordingButton(event: ReactKeyboardEvent<HTMLButtonElement>, activate: () => void) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  activate();
+}
+
+function MiniProjectTimeline({ output, ranges }: MiniProjectTimelineProps) {
+  const total = cutDuration(ranges) || recordingPlanCoverage(output) || 1;
+  return <div className="recording-output-preview" aria-hidden="true">{ranges.map((range, index) => <span key={`${output.id}.preview.${index}`} style={{ width: `${((range.end - range.start) / total) * 100}%` }}><i>{formatTime(range.end - range.start)}</i></span>)}</div>;
 }
 
 function outputRangeSummary(output: RecordingPlanOutput) {
@@ -836,6 +900,10 @@ async function loadRequestedProject(): Promise<VideoProject | null> {
   if (!id) return null;
   const redirect = legacyProjectRedirect(location.pathname, location.search);
   if (redirect) history.replaceState(history.state, "", redirect);
+  return loadVideoProject(id);
+}
+
+async function loadVideoProject(id: string): Promise<VideoProject> {
   const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Could not load video project.");
@@ -942,10 +1010,6 @@ function sourceState(project: VideoProject, sourceId: string): SourceState {
   return { name: media.label, url: `/api/projects/${project.id}/media/${sourceId}`, objectUrl: false };
 }
 
-function activeSourceId(url: string): string | null {
-  return decodeURIComponent(url.match(/\/media\/(media\.[a-z0-9.]+)$/)?.[1] || "") || null;
-}
-
 function useObjectUrlCleanup(source: SourceState) {
   useEffect(() => () => {
     if (source.objectUrl) URL.revokeObjectURL(source.url);
@@ -998,10 +1062,13 @@ type TimelineToolboxProps = { project: VideoProject; selectedId: string | null; 
 type PendingMediaLoad = { time: number; rangeIndex: number; play: boolean };
 type TakePreview = { sceneId: string; takeId: string; start: number; end: number };
 type WorkflowStep = "projects" | ViewMode;
-type RecordingSourceTimelineProps = { project: VideoProject; duration: number; thumbnails: string[]; waveform: number[]; currentTime: number; onSeek: (time: number) => void };
-type RecordingPlanPanelProps = { project: VideoProject; selectedOutputId: string | null; onPreview: (output: RecordingPlanOutput) => void };
-type MiniProjectTimelineProps = { output: RecordingPlanOutput; selected: boolean; onPreview: () => void };
+type RecordingSourceTimelineProps = { project: VideoProject; duration: number; thumbnails: string[]; waveform: number[]; currentTime: number; selected: boolean; onSeek: (time: number) => void; onSelect: () => void };
+type RecordingPlanPanelProps = { project: VideoProject; outputProjects: Record<string, VideoProject>; selectedOutputId: string | null; onPreview: (output: RecordingPlanOutput) => Promise<void> };
+type MiniProjectTimelineProps = { output: RecordingPlanOutput; ranges: SourceRange[] };
 const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
+
+function ignoreOverlaySelection(_id: string) {}
+function ignoreOverlayLayout(_id: string, _layout: OverlayLayout, _commit: boolean) {}
 
 import { ArrowRight, ArrowsOut, Export as ExportIcon, FilmStrip, GitBranch, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
@@ -1031,6 +1098,7 @@ import { cutoutWithProgramInterval } from "./CutoutOverlayModel";
 import { VideoOverlayStage, VideoOverlayTracks } from "./VideoOverlayEditors";
 import { videoOverlayWithProgramInterval } from "./VideoOverlayModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
-import { canonicalProjectPath, legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
+import { legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
 import { paintVideoFrame, superviseVideoPainting } from "./VideoPaintSurface";
 import { recordingOutputRanges, recordingPlanCoverage, recordingPlanDuration, recordingPlanForProject } from "./RecordingPlanModel";
+import { projectRecordingViewer, rawRecordingViewer } from "./RecordingViewerModel";
