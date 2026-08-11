@@ -8,6 +8,33 @@ Each source video gets one visible Codex task. The task—not the webpage—is t
    npm run video:create -- --source /absolute/path/to/video.mov
    ```
 
+   Before scene/take selection, record how the long source is divided across output projects:
+
+   ```sh
+   npm run recording:plan -- --project <project-id> --input /absolute/path/recording-plan.json
+   ```
+
+   The validated JSON contract is:
+
+   ```json
+   {
+     "version": 1,
+     "sourceId": "media.primary",
+     "sourceLabel": "IMG_9348.MOV",
+     "outputs": [{
+       "id": "output.one",
+       "projectId": "stable-project-id",
+       "projectTitle": "Readable title",
+       "intent": "new",
+       "status": "ready",
+       "summary": "What this output is",
+       "sourceRanges": [{ "start": 0, "end": 12.5 }]
+     }]
+   }
+   ```
+
+   Use `intent: "existing"` when this recording contributes new material to a project that predates it. A project may have multiple disjoint source ranges. Use `status: "planned"` until its project edit exists and `status: "ready"` once the project has been created or updated.
+
 2. Read the emitted `projectPath`. FluidAudio/Parakeet supplies timestamped words; the deterministic parser supplies only an initial scene/take proposal.
 3. Use Codex reasoning and source evidence to correct scene boundaries, take grouping, selection, and order in `project.json`. Never present parser rules as Codex reasoning.
 4. Open the emitted URL. The page is a projection of `project.json`; take selection, scene order, and trim changes save back to that file.

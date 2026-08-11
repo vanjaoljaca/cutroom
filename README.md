@@ -8,6 +8,7 @@ _Demo footage: [“Vertical Video of a Woman Dancing”](https://www.pexels.com/
 
 The current build provides:
 
+- a recording-plan view that maps one long source into several new or existing output projects;
 - a tall assembled-program filmstrip with compact, time-aligned compositing lanes;
 - scene/take selection, source trims, image overlays, subject cutouts, and reference-video clips;
 - project-owned JSON state plus CLI and HTTP contracts for headless editing;

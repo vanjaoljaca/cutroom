@@ -14,7 +14,9 @@ function makeProject(id: string, sourcePath: string, requestedTitle: string | nu
   const title = requestedTitle ? normalizeProjectTitle(requestedTitle) : displayProjectTitle(basename(sourcePath, extname(sourcePath)));
   const primary = { id: "media.primary", kind: "video" as const, role: "instruction" as const, label: basename(sourcePath), origin: { type: "local" as const, path: sourcePath }, cache: null, metadata: null, createdAt };
   const mediaLibrary = { version: 1 as const, primarySourceId: primary.id, sources: [primary] };
-  return { ...analysis, schemaVersion: 1, revision: 0, id, title, sourcePath, sourceName: basename(sourcePath), createdAt, mediaLibrary, programTimeline: createProgramTimeline(analysis.scenes, primary.id, createdAt), editorPreferences: { timelineWindow: "auto" }, assetLibrary: { version: 1, assets: [], bundles: [] }, overlays: [], cutoutOverlays: [], pitchAnalysis: null, exportHistory: [] };
+  const sourceRanges = analysis.cuts.map((cut) => ({ start: cut.start, end: cut.end }));
+  const recordingPlan = { version: 1 as const, sourceId: primary.id, sourceLabel: primary.label, outputs: [{ id: "output.current", projectId: id, projectTitle: title, intent: "new" as const, status: "ready" as const, summary: "", sourceRanges }] };
+  return { ...analysis, schemaVersion: 1, revision: 0, id, title, sourcePath, sourceName: basename(sourcePath), createdAt, recordingPlan, mediaLibrary, programTimeline: createProgramTimeline(analysis.scenes, primary.id, createdAt), editorPreferences: { timelineWindow: "auto" }, assetLibrary: { version: 1, assets: [], bundles: [] }, overlays: [], cutoutOverlays: [], pitchAnalysis: null, exportHistory: [] };
 }
 
 function optionalArgument(name: string): string | null {

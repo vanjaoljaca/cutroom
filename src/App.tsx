@@ -8,6 +8,8 @@ export function App() {
   const [originalDuration, setOriginalDuration] = useState(0);
   const [ranges, setRanges] = useState<SourceRange[]>([]);
   const [mode, setMode] = useState<ViewMode>("cut");
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>("cut");
+  const [recordingPreviewId, setRecordingPreviewId] = useState<string | null>(null);
   const [activeRange, setActiveRange] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -64,11 +66,12 @@ export function App() {
   const displayTime = mode === "cut" && ranges.length
     ? cutTimeFromSource(ranges, displayRange, currentTime)
     : currentTime;
-  const displayDuration = mode === "cut" ? assembledDuration : originalDuration;
+  const displayDuration = workflowStep === "projects" ? (mode === "cut" ? assembledDuration : duration) : (mode === "cut" ? assembledDuration : originalDuration);
 
   function handleMetadata() {
     const nextDuration = videoRef.current?.duration || 0;
     setDuration(nextDuration);
+    paintCurrentVideo();
     if (project && activeSourceId(source.url) === project.mediaLibrary.primarySourceId) setOriginalDuration(nextDuration);
     applyPendingMediaLoad();
     logEvent("video_loaded", { duration: nextDuration, name: source.name });
@@ -86,6 +89,7 @@ export function App() {
   function handleTimeUpdate() {
     const video = videoRef.current;
     if (!video) return;
+    paintCurrentVideo();
     const previewRestart = mode === "original" ? takePreviewRestart(video.currentTime, takePreview) : null;
     if (previewRestart !== null) return restartTakePreview(video, previewRestart);
     setCurrentTime(video.currentTime);
@@ -95,6 +99,11 @@ export function App() {
   function restartTakePreview(video: HTMLVideoElement, start: number) {
     video.currentTime = start;
     setCurrentTime(start);
+  }
+
+  function paintCurrentVideo() {
+    try { if (videoRef.current && videoCanvasRef.current) paintVideoFrame(videoRef.current, videoCanvasRef.current); }
+    catch (error) { logError("video_surface_direct_paint_failed", error); }
   }
 
   function advanceCutIfNeeded(video: HTMLVideoElement) {
@@ -149,7 +158,7 @@ export function App() {
   async function togglePlayback() {
     const video = videoRef.current;
     if (!video) return;
-    const decision = playbackDecision({ paused: video.paused, mode, currentTime: video.currentTime, duration: originalDuration, activeRange: activeRangeRef.current, ranges });
+    const decision = playbackDecision({ paused: video.paused, mode, currentTime: video.currentTime, duration: displayDuration, activeRange: activeRangeRef.current, ranges });
     if (decision.type === "pause") return video.pause();
     if (decision.type === "replay") return playAt(decision.time, decision.rangeIndex);
     await video.play();
@@ -178,10 +187,52 @@ export function App() {
   function changeMode(nextMode: ViewMode) {
     setTakePreview(null);
     setSourceBrowserOpen(false);
+    setRecordingPreviewId(null);
     setMode(nextMode);
-    if (nextMode === "cut" && ranges.length) switchOrSeek(ranges[0].start, 0);
+    setWorkflowStep(nextMode);
+    const projectRanges = project ? programRanges(project) : ranges;
+    setRanges(projectRanges);
+    if (nextMode === "cut" && projectRanges.length) seekProjectRange(projectRanges[0]);
     if (nextMode === "original" && project) switchToSource(project.mediaLibrary.primarySourceId, 0, 0, false);
     logEvent("timeline_mode_changed", { mode: nextMode });
+  }
+
+  function seekProjectRange(range: SourceRange) {
+    const sourceId = range.sourceId || project?.mediaLibrary.primarySourceId;
+    if (sourceId && activeSourceId(source.url) !== sourceId) switchToSource(sourceId, range.start, 0, false);
+    else seekOnCurrentSource(range.start, 0);
+  }
+
+  function showRecordingPlan() {
+    setTakePreview(null);
+    setSourceBrowserOpen(false);
+    setWorkflowStep("projects");
+    setMode("original");
+    setRecordingPreviewId(null);
+    if (project) switchToSource(recordingPlanForProject(project).sourceId, 0, 0, false);
+    logEvent("recording_plan_opened", { projectId: project?.id || "" });
+  }
+
+  function previewRecordingSource(time: number) {
+    if (!project) return;
+    const plan = recordingPlanForProject(project);
+    setRecordingPreviewId(null);
+    setMode("original");
+    if (activeSourceId(source.url) !== plan.sourceId) switchToSource(plan.sourceId, time, 0, false);
+    else seekOnCurrentSource(time, 0);
+  }
+
+  function previewRecordingOutput(output: RecordingPlanOutput) {
+    if (!project) return;
+    const previewRanges = recordingOutputRanges(recordingPlanForProject(project), output);
+    if (!previewRanges.length) return;
+    setRecordingPreviewId(output.id);
+    setRanges(previewRanges);
+    setMode("cut");
+    const first = previewRanges[0];
+    const sourceId = first.sourceId || recordingPlanForProject(project).sourceId;
+    if (activeSourceId(source.url) !== sourceId) switchToSource(sourceId, first.start, 0, true);
+    else void playAt(first.start, 0);
   }
 
   function seekFromTimeline(event: MouseEvent<HTMLDivElement>) {
@@ -206,12 +257,15 @@ export function App() {
     if (normalized !== selected) saveQueueRef.current?.enqueue(normalized);
     setRanges(nextRanges);
     setSelectedClipId(nextRanges[0]?.id || null);
+    const initialStep = nextRanges.length ? "cut" : "projects";
     setMode(nextRanges.length ? "cut" : "original");
+    setWorkflowStep(initialStep);
     const first = nextRanges[0];
     pendingMediaRef.current = first ? { time: first.start, rangeIndex: 0, play: false } : null;
     setSource(sourceState(normalized, first?.sourceId || normalized.mediaLibrary.primarySourceId));
     setSelectedOverlayId(null);
     setTakePreview(null);
+    setRecordingPreviewId(null);
   }
 
   async function openPitch() {
@@ -386,6 +440,7 @@ export function App() {
     if (!video || !sourceId) return;
     video.pause();
     setMode("original");
+    setWorkflowStep("original");
     setTakePreview({ sceneId, takeId: take.id, start: take.start, end: take.end });
     if (activeSourceId(source.url) !== sourceId) switchToSource(sourceId, take.start, 0, true);
     else await playTakeOnCurrentSource(video, take.start);
@@ -436,8 +491,8 @@ export function App() {
   const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className="viewer" ref={viewerRef}>
     <video className="video-decoder" ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
     <canvas className="video-paint-surface" ref={videoCanvasRef} aria-hidden="true" />
-    {project && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
-    {project && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
+    {project && workflowStep !== "projects" && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
+    {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
   </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
 
   const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={project?.id || null} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
@@ -454,17 +509,20 @@ export function App() {
         <div className="header-actions"><SaveIndicator status={saveStatus} /><div className="export-control"><button className="export-button" aria-label="Export video" title="Export video" aria-expanded={exportMenuOpen} disabled={exportStatus?.state === "queued" || exportStatus?.state === "exporting"} onClick={() => setExportMenuOpen((open) => !open)}><ExportIcon size={18} weight="bold" /></button>{exportMenuOpen && <div className="export-menu" role="menu" aria-label="Export options"><button role="menuitem" onClick={() => startExport("original-format")}><strong>Export original format</strong><span>HEVC · MOV · preserve source / smart render</span></button><button role="menuitem" onClick={() => startExport("tiktok-60")}><strong>Export for TikTok</strong><span>1080×1920 · 60 fps · MP4 · transcodes</span></button></div>}<ExportNotice status={exportStatus} onCancel={cancelExport} onRetry={() => startExport(exportStatus?.preset || "original-format")} /></div></div>
       </header>
 
-      <section className={`workspace ${mode}`} aria-label="Video editor">
+      <section className={`workspace ${mode} ${workflowStep === "projects" ? "projects-step" : ""}`} aria-label="Video editor">
         <div className="workflow-bar"><nav className="workflow-steps" aria-label="Editing workflow">
-            <button aria-label="Select scenes and takes" aria-current={mode === "original" ? "step" : undefined} title="Select scenes and takes" className={mode === "original" ? "active" : ""} onClick={() => changeMode("original")}><ListChecks size={16} weight="bold" /></button>
+            <button aria-label="Split recording into projects" aria-current={workflowStep === "projects" ? "step" : undefined} title="Split recording into projects" className={workflowStep === "projects" ? "active" : ""} onClick={showRecordingPlan}><GitBranch size={16} weight="bold" /></button>
             <ArrowRight size={12} weight="bold" aria-hidden="true" />
-            <button aria-label="Edit timeline" aria-current={mode === "cut" ? "step" : undefined} disabled={!ranges.length} title={ranges.length ? "Edit timeline" : "No cut has been made yet"} className={mode === "cut" ? "active" : ""} onClick={() => changeMode("cut")}><Scissors size={16} weight="bold" /></button>
+            <button aria-label="Select scenes and takes" aria-current={workflowStep === "original" ? "step" : undefined} title="Select scenes and takes" className={workflowStep === "original" ? "active" : ""} onClick={() => changeMode("original")}><ListChecks size={16} weight="bold" /></button>
+            <ArrowRight size={12} weight="bold" aria-hidden="true" />
+            <button aria-label="Edit timeline" aria-current={workflowStep === "cut" ? "step" : undefined} disabled={!ranges.length} title={ranges.length ? "Edit timeline" : "No cut has been made yet"} className={workflowStep === "cut" ? "active" : ""} onClick={() => changeMode("cut")}><Scissors size={16} weight="bold" /></button>
           </nav></div>
-        {!ranges.length && <p className="no-cut-note">No take selected. Ask the video task to revise this project.</p>}
+        {workflowStep !== "projects" && !ranges.length && <p className="no-cut-note">No take selected. Ask the video task to revise this project.</p>}
         {projectError && <p className="analysis-error">{projectError}</p>}
 
-        {mode === "original" && <div className="phase-preview original"><div className="selection-phase">{playerControls}{project && <AnalysisPanel project={project} duration={originalDuration} previewTakeId={takePreview?.takeId || null} onSeek={seekTo} onUpdate={updateTake} onSelect={selectTake} onPreview={previewTake} />}</div>{videoPreview}</div>}
-        {mode === "cut" && <><div className="phase-preview cut">{videoPreview}</div><div className="edit-phase">{playerControls}
+        {workflowStep === "projects" && project && <div className="recording-plan-phase"><RecordingSourceTimeline project={project} duration={duration} thumbnails={thumbnails} waveform={waveform} currentTime={currentTime} onSeek={previewRecordingSource} /><div className="recording-plan-workspace"><RecordingPlanPanel project={project} selectedOutputId={recordingPreviewId} onPreview={previewRecordingOutput} /><div className="recording-preview-column">{videoPreview}{playerControls}</div></div></div>}
+        {workflowStep === "original" && <div className="phase-preview original"><div className="selection-phase">{playerControls}{project && <AnalysisPanel project={project} duration={originalDuration} previewTakeId={takePreview?.takeId || null} onSeek={seekTo} onUpdate={updateTake} onSelect={selectTake} onPreview={previewTake} />}</div>{videoPreview}</div>}
+        {workflowStep === "cut" && <><div className="phase-preview cut">{videoPreview}</div><div className="edit-phase">{playerControls}
           <Timeline
           project={project}
           mode={mode}
@@ -493,6 +551,32 @@ export function App() {
       </section>
     </main>{project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onCreateCutout={createSubjectCutout} />}{pitchVisible && <PitchPopup artifact={pitchArtifact} mode={mode} ranges={ranges} duration={originalDuration} playheadRatio={displayDuration ? displayTime / displayDuration : 0} status={pitchStatus} onSeekRatio={seekFromRatio} onClose={() => setPitchVisible(false)} />}{projectRail}</>
   );
+}
+
+function RecordingSourceTimeline({ project, duration, thumbnails, waveform, currentTime, onSeek }: RecordingSourceTimelineProps) {
+  const plan = recordingPlanForProject(project);
+  const sourceDuration = recordingPlanDuration(plan, duration);
+  function seek(event: MouseEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    onSeek(((event.clientX - bounds.left) / bounds.width) * sourceDuration);
+  }
+  return <section className="recording-source-section" aria-label="Full source recording"><header><strong>{plan.sourceLabel}</strong><span>{formatTime(sourceDuration)}</span></header><div className="recording-source-timeline" role="slider" tabIndex={0} aria-label="Full recording timeline" onClick={seek}><ThumbnailStrip thumbnails={thumbnails} /><Waveform peaks={waveform} />{plan.outputs.flatMap((output, outputIndex) => output.sourceRanges.map((range, rangeIndex) => <span className="recording-source-range" key={`${output.id}.${rangeIndex}`} style={{ left: `${(range.start / sourceDuration) * 100}%`, width: `${((range.end - range.start) / sourceDuration) * 100}%`, "--recording-color": segmentColors[outputIndex % segmentColors.length] } as CSSProperties} />))}<TrackPlayhead playhead={`${(currentTime / sourceDuration) * 100}%`} /></div></section>;
+}
+
+function RecordingPlanPanel({ project, selectedOutputId, onPreview }: RecordingPlanPanelProps) {
+  const plan = recordingPlanForProject(project);
+  return <section className="recording-plan-panel" aria-label="Recording projects"><header><span>Output projects</span><strong>{plan.outputs.length}</strong></header><ol className="recording-output-list">{plan.outputs.map((output, index) => <li key={output.id} className={`${output.projectId === project.id ? "current" : ""} ${selectedOutputId === output.id ? "selected" : ""}`}><div className="recording-output-heading"><span className="recording-output-number">{index + 1}</span><div><a href={canonicalProjectPath(output.projectId)}>{output.projectTitle}</a><p>{output.summary || outputRangeSummary(output)}</p></div><span className={`recording-output-intent ${output.intent}`}>{output.intent === "new" ? "New" : "Existing"}</span><span className={`recording-output-status ${output.status}`}>{output.status === "ready" ? "Ready" : "Planned"}</span></div><MiniProjectTimeline output={output} selected={selectedOutputId === output.id} onPreview={() => onPreview(output)} /></li>)}</ol></section>;
+}
+
+function MiniProjectTimeline({ output, selected, onPreview }: MiniProjectTimelineProps) {
+  const total = recordingPlanCoverage(output);
+  return <button className="recording-output-preview" aria-label={`Preview ${output.projectTitle}`} aria-pressed={selected} disabled={!output.sourceRanges.length} onClick={onPreview}>{output.sourceRanges.map((range, index) => <span key={`${output.id}.preview.${index}`} style={{ width: `${((range.end - range.start) / total) * 100}%` }}><i>{formatTime(range.end - range.start)}</i></span>)}</button>;
+}
+
+function outputRangeSummary(output: RecordingPlanOutput) {
+  if (!output.sourceRanges.length) return "Source sections not assigned yet";
+  const label = output.sourceRanges.length === 1 ? "section" : "sections";
+  return `${output.sourceRanges.length} source ${label} · ${formatTime(recordingPlanCoverage(output))}`;
 }
 
 function SaveIndicator({ status }: { status: ProjectSaveStatus }) {
@@ -895,11 +979,15 @@ type PitchPopupProps = { artifact: PitchArtifact | null; mode: ViewMode; ranges:
 type TimelineToolboxProps = { project: VideoProject; selectedId: string | null; onRemove: () => void };
 type PendingMediaLoad = { time: number; rangeIndex: number; play: boolean };
 type TakePreview = { sceneId: string; takeId: string; start: number; end: number };
+type WorkflowStep = "projects" | ViewMode;
+type RecordingSourceTimelineProps = { project: VideoProject; duration: number; thumbnails: string[]; waveform: number[]; currentTime: number; onSeek: (time: number) => void };
+type RecordingPlanPanelProps = { project: VideoProject; selectedOutputId: string | null; onPreview: (output: RecordingPlanOutput) => void };
+type MiniProjectTimelineProps = { output: RecordingPlanOutput; selected: boolean; onPreview: () => void };
 const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 
-import { ArrowRight, ArrowsOut, Export as ExportIcon, FilmStrip, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, X } from "@phosphor-icons/react";
+import { ArrowRight, ArrowsOut, Export as ExportIcon, FilmStrip, GitBranch, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
-import type { CutProposal, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, SceneProposal, TakeProposal, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
+import type { CutProposal, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RecordingPlanOutput, SceneProposal, TakeProposal, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
 import { cutDuration, cutTimeFromSource, formatTime, sourceLocationFromCutTime, type SourceRange, type ViewMode } from "./editor-model";
 import { EditableOverlayStage, ImageOverlayTracks } from "./ImageOverlayEditors";
@@ -923,5 +1011,6 @@ import { SourceBrowser } from "./SourceBrowser";
 import { CutoutOverlayStage, CutoutOverlayTracks } from "./CutoutOverlayEditors";
 import { cutoutWithProgramInterval } from "./CutoutOverlayModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
-import { legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
-import { superviseVideoPainting } from "./VideoPaintSurface";
+import { canonicalProjectPath, legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
+import { paintVideoFrame, superviseVideoPainting } from "./VideoPaintSurface";
+import { recordingOutputRanges, recordingPlanCoverage, recordingPlanDuration, recordingPlanForProject } from "./RecordingPlanModel";

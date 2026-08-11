@@ -2,29 +2,37 @@ export function superviseVideoPainting(video: HTMLVideoElement, canvas: HTMLCanv
   let stopped = false;
   let failed = false;
   let callback = 0;
+  const repaint = () => {
+    try { paintVideoFrame(video, canvas); }
+    catch (error) { if (!failed) logError("video_surface_paint_failed", error); failed = true; }
+  };
   const paint = () => {
     if (stopped) return;
-    try { paintVideoFrame(video, canvas); }
-    catch (error) {
-      if (!failed) logError("video_surface_paint_failed", error);
-      failed = true;
-    }
-    callback = video.requestVideoFrameCallback(paint);
+    repaint();
+    callback = scheduleVideoFrame(video, paint);
   };
-  callback = video.requestVideoFrameCallback(paint);
-  const repaint = () => paintVideoFrame(video, canvas);
-  video.addEventListener("loadeddata", repaint);
-  video.addEventListener("seeked", repaint);
+  callback = scheduleVideoFrame(video, paint);
+  requestAnimationFrame(repaint);
+  paintEvents.forEach((event) => video.addEventListener(event, repaint));
   window.addEventListener("resize", repaint);
   document.addEventListener("fullscreenchange", repaint);
   return () => {
     stopped = true;
-    video.cancelVideoFrameCallback(callback);
-    video.removeEventListener("loadeddata", repaint);
-    video.removeEventListener("seeked", repaint);
+    cancelVideoFrame(video, callback);
+    paintEvents.forEach((event) => video.removeEventListener(event, repaint));
     window.removeEventListener("resize", repaint);
     document.removeEventListener("fullscreenchange", repaint);
   };
+}
+
+const paintEvents = ["loadeddata", "canplay", "play", "timeupdate", "seeked"] as const;
+
+function scheduleVideoFrame(video: HTMLVideoElement, paint: VideoFrameRequestCallback) {
+  return typeof video.requestVideoFrameCallback === "function" ? video.requestVideoFrameCallback(paint) : 0;
+}
+
+function cancelVideoFrame(video: HTMLVideoElement, callback: number) {
+  if (callback && typeof video.cancelVideoFrameCallback === "function") video.cancelVideoFrameCallback(callback);
 }
 
 export function paintVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {

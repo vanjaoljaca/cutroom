@@ -7,8 +7,9 @@ export function normalizeVideoProject(project: VideoProject): VideoProject {
   const exportHistory = (project.exportHistory || []).map((receipt, index) => normalizeExportReceipt(receipt, index + 1));
   const mediaLibrary = project.mediaLibrary || legacyMediaLibrary(project);
   const programTimeline = project.programTimeline || createProgramTimeline(project.scenes, mediaLibrary.primarySourceId, project.createdAt || "");
+  const recordingPlan = recordingPlanForProject({ ...project, mediaLibrary, programTimeline } as VideoProject);
   const editorPreferences = project.editorPreferences || { timelineWindow: "auto" };
-  return { ...project, schemaVersion: 1, revision: project.revision || 0, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
+  return { ...project, schemaVersion: 1, revision: project.revision || 0, recordingPlan, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
 }
 
 export function validateVideoProject(input: VideoProject): VideoProject {
@@ -16,6 +17,7 @@ export function validateVideoProject(input: VideoProject): VideoProject {
   assert(project.schemaVersion === 1, "Unsupported project schema version.");
   assert(Number.isInteger(project.revision) && project.revision >= 0, "Invalid project revision.");
   validateMediaLibrary(project.mediaLibrary);
+  validateRecordingPlan(project);
   validateProgramTimeline(project);
   assert(["auto", "15", "60", "180", "300"].includes(project.editorPreferences.timelineWindow), "Invalid timeline window.");
   validateAssets(project);
@@ -25,6 +27,21 @@ export function validateVideoProject(input: VideoProject): VideoProject {
   if (project.pitchAnalysis) validatePitchReference(project.pitchAnalysis);
   project.exportHistory.forEach(validateExportReceipt);
   return project;
+}
+
+function validateRecordingPlan(project: VideoProject) {
+  const plan = project.recordingPlan;
+  assert(plan !== undefined, "Recording plan is missing.");
+  assert(plan.version === 1 && project.mediaLibrary.sources.some((source) => source.id === plan.sourceId), "Invalid recording plan source.");
+  assert(plan.sourceLabel.trim().length > 0 && plan.outputs.length > 0, "Recording plan requires a source label and outputs.");
+  const ids = new Set<string>();
+  plan.outputs.forEach((output) => {
+    assert(!ids.has(output.id) && /^output\.[a-z0-9.]+$/.test(output.id), `Invalid recording output id: ${output.id}`);
+    assert(/^[a-z0-9-]+$/.test(output.projectId) && output.projectTitle.trim().length > 0, `Invalid recording output project: ${output.id}`);
+    assert(["new", "existing"].includes(output.intent) && ["planned", "ready"].includes(output.status), `Invalid recording output state: ${output.id}`);
+    assert(output.sourceRanges.every((range) => range.start >= 0 && range.end > range.start), `Invalid recording output ranges: ${output.id}`);
+    ids.add(output.id);
+  });
 }
 
 function validateMediaLibrary(library: MediaLibrary) {
@@ -226,3 +243,4 @@ const emptySource = { sourceUrl: null, attribution: null, license: null };
 
 import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, VideoMediaMetadata, VideoMediaSource, VideoProject } from "../src/analysis-model";
 import { createProgramTimeline } from "../src/ProgramTimelineModel";
+import { recordingPlanForProject } from "../src/RecordingPlanModel";

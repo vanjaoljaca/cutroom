@@ -10,7 +10,10 @@ export async function renameProject(input: RenameProjectInput): Promise<VideoPro
   log("project_rename_requested", { projectId: input.projectId });
   const project = await readStoredProject(input.projectId);
   assertRevision(project, input.revision);
-  return writeStoredProject({ ...project, title: normalizeProjectTitle(input.title) });
+  const title = normalizeProjectTitle(input.title);
+  const recordingPlan = recordingPlanForProject(project);
+  const outputs = recordingPlan.outputs.map((output) => output.projectId === project.id ? { ...output, projectTitle: title } : output);
+  return writeStoredProject({ ...project, title, recordingPlan: { ...recordingPlan, outputs } });
 }
 
 export async function trashProject(input: TrashProjectInput): Promise<ProjectTrashReceipt> {
@@ -57,3 +60,4 @@ import type { ProjectSummary, ProjectTrashReceipt, VideoProject } from "../src/a
 import { normalizeProjectTitle } from "../src/ProjectTitle";
 import { projectsRoot, runtimeRoot } from "./media-analysis";
 import { ProjectRevisionConflict, projectDirectory, readStoredProject, writeStoredProject } from "./project-store";
+import { recordingPlanForProject } from "../src/RecordingPlanModel";

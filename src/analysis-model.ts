@@ -45,6 +45,7 @@ export type VideoProject = AnalysisResult & {
   sourcePath: string;
   sourceName: string;
   createdAt: string;
+  recordingPlan?: RecordingPlan;
   mediaLibrary: MediaLibrary;
   programTimeline: ProgramTimeline;
   editorPreferences: EditorPreferences;
@@ -53,6 +54,28 @@ export type VideoProject = AnalysisResult & {
   cutoutOverlays: SubjectCutoutOverlay[];
   pitchAnalysis: PitchAnalysisReference | null;
   exportHistory: ExportReceipt[];
+};
+
+export type RecordingPlan = {
+  version: 1;
+  sourceId: string;
+  sourceLabel: string;
+  outputs: RecordingPlanOutput[];
+};
+
+export type RecordingPlanOutput = {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  intent: "new" | "existing";
+  status: "planned" | "ready";
+  summary: string;
+  sourceRanges: RecordingPlanRange[];
+};
+
+export type RecordingPlanRange = {
+  start: number;
+  end: number;
 };
 
 export type ProjectSummary = {

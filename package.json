@@ -20,6 +20,7 @@
     "overlay:remove": "vite-node scripts/RemoveProjectOverlay.ts",
     "pitch:analyze": "vite-node scripts/AnalyzeProjectPitch.ts",
     "video:create": "vite-node scripts/CreateVideoProject.ts",
+    "recording:plan": "vite-node scripts/SetRecordingPlan.ts",
     "video:export": "vite-node scripts/ExportVideo.ts",
     "media:reference:add": "vite-node scripts/AddReferenceMedia.ts",
     "media:reference:regenerate": "vite-node scripts/RegenerateReferenceMedia.ts",
