@@ -1,4 +1,4 @@
-export async function renderCutoutArtifacts(project: VideoProject, overlay: SubjectCutoutOverlay, onProgress?: (progress: number) => void): Promise<CutoutArtifacts> {
+export async function renderCutoutArtifacts(project: VideoProject, overlay: SubjectCutoutOverlay, onProgress?: (progress: CutoutProgress) => void): Promise<CutoutArtifacts> {
   log("cutout_render_started", { projectId: project.id, overlayId: overlay.id, sourceId: overlay.sourceId });
   await assertRuntimeStorageAvailable();
   await access(rembgPythonPath).catch(() => { throw new Error(`Local person segmentation is not installed at ${rembgPythonPath}.`); });
@@ -9,10 +9,12 @@ export async function renderCutoutArtifacts(project: VideoProject, overlay: Subj
   const draft = join(work, "artifacts");
   try {
     await prepareWork(work);
+    onProgress?.({ phase: "extracting", progress: 0.02, message: "Extracting frames…" });
     await extractFrames(mediaSourcePath(source), overlay, work);
-    onProgress?.(0.18);
+    onProgress?.({ phase: "segmenting", progress: 0.18, message: "Removing background…" });
     await segmentFrames(work, onProgress);
-    await encodeArtifacts(work, draft);
+    await encodeArtifacts(work, draft, onProgress);
+    onProgress?.({ phase: "finalizing", progress: 0.97, message: "Finalizing cutout…" });
     const recipePath = join(draft, "recipe.json");
     await writeFile(recipePath, `${JSON.stringify(recipe(project, overlay), null, 2)}\n`);
     await mkdir(join(projectDirectory(project.id), "derived", "cutouts"), { recursive: true });
@@ -32,16 +34,16 @@ async function extractFrames(path: string, overlay: SubjectCutoutOverlay, work: 
   await command(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-ss", String(overlay.sourceStart), "-t", String(duration), "-i", path, "-vf", `fps=${cutoutFps}`, "-start_number", "0", join(work, "source", "%06d.png")], {});
 }
 
-async function segmentFrames(work: string, onProgress?: (progress: number) => void) {
+async function segmentFrames(work: string, onProgress?: (progress: CutoutProgress) => void) {
   const source = join(work, "source");
   const output = join(work, "transparent");
   await streamingCommand(rembgPythonPath, [pythonScript, source, output], { ...process.env, U2NET_HOME: rembgModelRoot }, (output) => updateFrameProgress(output, onProgress));
 }
 
-function updateFrameProgress(output: string, onProgress?: (progress: number) => void) {
+function updateFrameProgress(output: string, onProgress?: (progress: CutoutProgress) => void) {
   const matches = [...output.matchAll(/"frame":\s*(\d+).*"frames":\s*(\d+)/g)];
   const latest = matches.at(-1);
-  if (latest) onProgress?.(0.18 + (Number(latest[1]) / Number(latest[2])) * 0.62);
+  if (latest) onProgress?.({ phase: "segmenting", progress: 0.18 + (Number(latest[1]) / Number(latest[2])) * 0.62, message: `Removing background · ${latest[1]}/${latest[2]} frames` });
 }
 
 async function streamingCommand(executable: string, args: string[], env: NodeJS.ProcessEnv, onOutput: (output: string) => void) {
@@ -58,10 +60,12 @@ function superviseProcess(child: ReturnType<typeof spawn>, onOutput: (output: st
   child.on("close", (code) => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(stderr.trim() || `Cutout process exited with code ${code}.`)); });
 }
 
-async function encodeArtifacts(work: string, destination: string) {
+async function encodeArtifacts(work: string, destination: string, onProgress?: (progress: CutoutProgress) => void) {
   const frames = join(work, "transparent", "%06d.png");
   await mkdir(destination, { recursive: true });
+  onProgress?.({ phase: "encoding-preview", progress: 0.82, message: "Encoding preview…" });
   await command(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", String(cutoutFps), "-start_number", "0", "-i", frames, "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "18", join(destination, "preview.webm")], {});
+  onProgress?.({ phase: "encoding-render", progress: 0.9, message: "Encoding full-quality cutout…" });
   await command(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", String(cutoutFps), "-start_number", "0", "-i", frames, "-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", "yuva444p10le", join(destination, "render.mov")], {});
 }
 
@@ -81,6 +85,7 @@ function relativeArtifacts(id: string): CutoutArtifacts {
 function log(event: string, details: Record<string, unknown>) { console.info(JSON.stringify({ scope: "cutroom-cutout", event, ...details })); }
 
 export type CutoutArtifacts = { previewPath: string; renderPath: string; recipePath: string };
+export type CutoutProgress = { phase: NonNullable<SubjectCutoutOverlay["processing"]["phase"]>; progress: number; message: string };
 
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";

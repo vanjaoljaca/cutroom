@@ -29,6 +29,9 @@ export function App() {
   const [projectRailOpen, setProjectRailOpen] = useState(() => !projectIdFromLocation(location.pathname, location.search));
   const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedDeletedClipId, setSelectedDeletedClipId] = useState<string | null>(null);
+  const [splitMode, setSplitMode] = useState(false);
+  const [viewDeleted, setViewDeleted] = useState(false);
   const [cutoutStatus, setCutoutStatus] = useState<CutoutJobStatus | null>(null);
   const [takePreview, setTakePreview] = useState<TakePreview | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -374,6 +377,7 @@ export function App() {
     setRecordingPreviewProject(null);
     setRecordingOutputProjects({});
     setRecordingTakeMenu(null);
+    setCutoutStatus(recoverableCutoutStatus(normalized));
   }
 
   async function openPitch() {
@@ -471,6 +475,23 @@ export function App() {
     commitProject({ ...project, videoOverlays }, persist);
   }
 
+  function changeTextOverlayTiming(id: string, start: number, end: number, persist: boolean) {
+    if (!project) return;
+    const textOverlays = project.textOverlays.map((overlay) => overlay.id === id ? textOverlayWithProgramInterval(overlay, ranges, start, end) : overlay);
+    commitProject({ ...project, textOverlays }, persist);
+  }
+
+  function updateTextOverlay(next: TextOverlay) {
+    if (!project) return;
+    commitProject({ ...project, textOverlays: project.textOverlays.map((overlay) => overlay.id === next.id ? next : overlay) }, true);
+  }
+
+  function changeTextOverlayPosition(id: string, x: number, y: number, persist: boolean) {
+    if (!project) return;
+    const textOverlays = project.textOverlays.map((overlay) => overlay.id === id ? { ...overlay, layout: { ...overlay.layout, x, y } } : overlay);
+    commitProject({ ...project, textOverlays }, persist);
+  }
+
   async function createSubjectCutout(media: VideoMediaSource, start: number, end: number, targetClipId: string) {
     if (!project) return;
     try { applyCutoutStatus(await requestCutout(project.id, { sourceId: media.id, sourceStart: start, sourceEnd: end, targetClipId, label: `${media.label} cutout` })); }
@@ -511,14 +532,50 @@ export function App() {
     logEvent("program_clip_inserted", { clipId: id, sourceId: source.id, index, start, end });
   }
 
+  function replaceSourceInProgram(source: VideoMediaSource, start: number, end: number, clipId: string) {
+    if (!project) return;
+    const clip = sourceProgramClip({ id: clipId, sourceId: source.id, label: source.label, sourceStart: start, sourceEnd: end, createdAt: new Date().toISOString() });
+    const programTimeline = replaceProgramClip(project.programTimeline, clipId, clip);
+    commitProject({ ...project, programTimeline });
+    const index = Math.max(0, programTimeline.clips.findIndex((item) => item.id === clipId));
+    setMode("cut"); queueMicrotask(() => switchToSource(source.id, start, index, false));
+    logEvent("program_clip_replaced", { clipId, sourceId: source.id, start, end });
+  }
+
   function removeSelectedProgramClip() {
     if (!project || !selectedClipId) return;
     const clip = project.programTimeline.clips.find((candidate) => candidate.id === selectedClipId);
-    if (!clip || clip.kind === "scene") return;
-    const programTimeline = removeProgramClip(project.programTimeline, clip.id);
-    commitProject({ ...project, programTimeline });
-    setSelectedClipId(programTimeline.clips[0]?.id || null);
+    if (!clip) return;
+    const index = project.programTimeline.clips.findIndex((candidate) => candidate.id === clip.id);
+    const programStart = cutDuration(ranges.slice(0, index));
+    const editorialState = { overlays: project.overlays, videoOverlays: project.videoOverlays, textOverlays: project.textOverlays };
+    const programTimeline = deleteProgramClip(project.programTimeline, clip.id, editorialState, new Date().toISOString());
+    const shifted = shiftSelectedCutOverlays(project, programStart, clip.sourceEnd - clip.sourceStart);
+    commitProject({ ...shifted, programTimeline });
+    setSelectedClipId(programTimeline.clips[Math.min(index, programTimeline.clips.length - 1)]?.id || null);
+    setSelectedDeletedClipId(clip.id);
     logEvent("program_clip_removed", { clipId: clip.id });
+  }
+
+  function restoreDeletedProgramClip() {
+    if (!project || !selectedDeletedClipId) return;
+    const deleted = project.programTimeline.deletedClips?.find((item) => item.clip.id === selectedDeletedClipId); if (!deleted) return;
+    const programTimeline = restoreProgramClip(project.programTimeline, selectedDeletedClipId);
+    commitProject({ ...project, programTimeline, ...deleted.editorialState }); setSelectedClipId(selectedDeletedClipId); setSelectedDeletedClipId(null);
+    logEvent("program_clip_restored", { clipId: deleted.clip.id });
+  }
+
+  function splitProgramAt(cutTime: number) {
+    if (!project) return;
+    let before = 0;
+    const range = ranges.find((item) => { const end = before + item.end - item.start; const match = cutTime > before + 0.08 && cutTime < end - 0.08; if (!match) before = end; return match; });
+    if (!range?.clipId) return;
+    const rightId = `clip.split.${crypto.randomUUID().toLowerCase()}`;
+    const sourceTime = range.start + cutTime - before;
+    const programTimeline = splitProgramClip(project.programTimeline, range.clipId, sourceTime, rightId);
+    if (programTimeline === project.programTimeline) return;
+    commitProject({ ...project, programTimeline }); setSelectedClipId(rightId); setSelectedDeletedClipId(null);
+    logEvent("program_clip_split", { clipId: range.clipId, rightId, sourceTime, cutTime });
   }
 
   function updateProgramClipTrim(clipId: string, edge: "start" | "end", value: number, persist: boolean) {
@@ -617,10 +674,12 @@ export function App() {
     {project && workflowStep !== "projects" && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
     {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
     {project && workflowStep !== "projects" && <VideoOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeVideoOverlayLayout} />}
+    {project && workflowStep !== "projects" && <TextOverlayStage project={project} mode={mode} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onPositionChange={changeTextOverlayPosition} />}
     {recordingPreviewProject && workflowStep === "projects" && <div className="recording-preview-overlays" inert>
       <EditableOverlayStage project={recordingPreviewProject} mode="cut" sourceTime={currentTime} cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
       <CutoutOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
       <VideoOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
+      <TextOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onPositionChange={ignoreTextPosition} />
     </div>}
   </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
 
@@ -635,7 +694,7 @@ export function App() {
           <span className="wordmark">Cutroom</span>
           <span className="file-name">{displayProjectTitle(project?.title || source.name)}</span>
         </div>
-        <div className="header-actions"><SaveIndicator status={saveStatus} /><div className="export-control"><button className="export-button" aria-label="Export video" title="Export video" aria-expanded={exportMenuOpen} disabled={exportStatus?.state === "queued" || exportStatus?.state === "exporting"} onClick={() => setExportMenuOpen((open) => !open)}><ExportIcon size={18} weight="bold" /></button>{exportMenuOpen && <div className="export-menu" role="menu" aria-label="Export options"><button role="menuitem" onClick={() => startExport("original-format")}><strong>Export original format</strong><span>HEVC · MOV · preserve source / smart render</span></button><button role="menuitem" onClick={() => startExport("tiktok-60")}><strong>Export for TikTok</strong><span>1080×1920 · 60 fps · MP4 · transcodes</span></button></div>}<ExportNotice status={exportStatus} onCancel={cancelExport} onRetry={() => startExport(exportStatus?.preset || "original-format")} /></div></div>
+        <div className="header-actions"><SaveIndicator status={saveStatus} /><div className="export-control"><button className="export-button" aria-label="Export video" title="Export video" aria-expanded={exportMenuOpen} disabled={exportStatus?.state === "queued" || exportStatus?.state === "exporting"} onClick={() => setExportMenuOpen((open) => !open)}><ExportIcon size={18} weight="bold" /></button>{exportMenuOpen && <div className="export-menu" role="menu" aria-label="Export options"><button role="menuitem" onClick={() => startExport("original-format")}><strong>Export original format</strong><span>HEVC · MOV · preserve source / smart render</span></button><button role="menuitem" onClick={() => startExport("tiktok-60")}><strong>Export for TikTok · Hardware</strong><span>Default · VideoToolbox · 1080×1920 · 60 fps</span></button><button role="menuitem" onClick={() => startExport("tiktok-software")}><strong>High-quality software</strong><span>libx264 slow · CRF 14 · same edit and overlays</span></button></div>}<ExportNotice status={exportStatus} onCancel={cancelExport} onRetry={() => startExport(exportStatus?.preset || "original-format")} /></div></div>
       </header>
 
       <section className={`workspace ${mode} ${workflowStep === "projects" ? "projects-step" : ""}`} aria-label="Video editor">
@@ -671,15 +730,25 @@ export function App() {
           onCandidateSelect={selectBundleCandidate}
           onCutoutTimingChange={changeCutoutTiming}
           onVideoOverlayTimingChange={changeVideoOverlayTiming}
+          onTextOverlayTimingChange={changeTextOverlayTiming}
+          onTextOverlayUpdate={updateTextOverlay}
           timelineWindow={project?.editorPreferences.timelineWindow || "auto"}
           onTimelineWindowChange={changeTimelineWindow}
           selectedClipId={selectedClipId}
           onSelectClip={setSelectedClipId}
+          selectedDeletedClipId={selectedDeletedClipId}
+          onSelectDeletedClip={(id) => { setSelectedDeletedClipId(id); setSelectedClipId(null); }}
           onRemoveClip={removeSelectedProgramClip}
+          onSplitAt={splitProgramAt}
+          onRestoreClip={restoreDeletedProgramClip}
+          splitMode={splitMode}
+          onSplitModeChange={() => setSplitMode((active) => !active)}
+          viewDeleted={viewDeleted}
+          onViewDeletedChange={setViewDeleted}
           />
         </div></>}
       </section>
-    </main>{project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onCreateCutout={createSubjectCutout} />}{recordingTakeMenu && recordingPreviewProject && <RecordingTakeMenu project={recordingPreviewProject} state={recordingTakeMenu} onSelect={chooseRecordingTake} onClose={() => setRecordingTakeMenu(null)} />}{pitchVisible && <PitchPopup artifact={pitchArtifact} mode={mode} ranges={ranges} duration={originalDuration} playheadRatio={displayDuration ? displayTime / displayDuration : 0} status={pitchStatus} onSeekRatio={seekFromRatio} onClose={() => setPitchVisible(false)} />}{projectRail}</>
+    </main>{project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onReplace={replaceSourceInProgram} onCreateCutout={createSubjectCutout} />}{recordingTakeMenu && recordingPreviewProject && <RecordingTakeMenu project={recordingPreviewProject} state={recordingTakeMenu} onSelect={chooseRecordingTake} onClose={() => setRecordingTakeMenu(null)} />}{pitchVisible && <PitchPopup artifact={pitchArtifact} mode={mode} ranges={ranges} duration={originalDuration} playheadRatio={displayDuration ? displayTime / displayDuration : 0} status={pitchStatus} onSeekRatio={seekFromRatio} onClose={() => setPitchVisible(false)} />}{projectRail}</>
   );
 }
 
@@ -795,26 +864,26 @@ function ProjectLanding({ error, onOpenProjects }: { error: string; onOpenProjec
 }
 
 function ExportNotice({ status, onCancel, onRetry }: ExportNoticeProps) {
-  if (status?.state === "queued" || status?.state === "exporting") return <div className="export-notice" role="status"><span>Exporting {Math.round(status.progress * 100)}%</span><progress max="1" value={status.progress} /><button onClick={onCancel}>Cancel</button></div>;
+  if (status?.state === "queued" || status?.state === "exporting") return <div className="export-notice" role="status"><span>{status.message}</span><progress max="1" value={status.progress} /><button onClick={onCancel}>Cancel</button></div>;
   if (status?.state === "failed" || status?.state === "cancelled") return <div className="export-notice failed" role="alert"><span>{status.error || status.message}</span><button onClick={onRetry}>Retry</button></div>;
   return null;
 }
 
-function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, addMediaOpen, onAddMedia, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, onVideoOverlayTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
+function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, addMediaOpen, onAddMedia, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, onVideoOverlayTimingChange, onTextOverlayTimingChange, onTextOverlayUpdate, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, selectedDeletedClipId, onSelectDeletedClip, onRemoveClip, onSplitAt, onRestoreClip, splitMode, onSplitModeChange, viewDeleted, onViewDeletedChange }: TimelineProps) {
   const timelineDuration = mode === "cut" ? cutDuration(ranges) : duration;
   const canvasWidth = `${timelineCanvasPercent(timelineDuration, timelineWindow)}%`;
   const multiSource = mode === "cut" && new Set(ranges.map((range) => range.sourceId)).size > 1;
   return (
     <section className="timeline-section">
       <div className="timeline-heading">
-        {mode === "cut" && <button className="add-media-button" aria-expanded={addMediaOpen} onClick={onAddMedia}><Plus size={14} weight="bold" />Add</button>}
-        <span className="timeline-heading-actions"><TimelineSettings timelineWindow={timelineWindow} onViewPitch={onViewPitch} onTimelineWindowChange={onTimelineWindowChange} /></span>
+        <span className="timeline-tools">{mode === "cut" && <><button className="add-media-button" aria-expanded={addMediaOpen} onClick={onAddMedia}><Plus size={14} weight="bold" />Add</button><button className={`timeline-tool ${splitMode ? "active" : ""}`} aria-label="Split" title="Split" aria-pressed={splitMode} onClick={onSplitModeChange}><Scissors size={16} /></button>{selectedClipId && <button className="timeline-tool delete" aria-label="Delete segment" title="Delete segment" onClick={onRemoveClip}><Trash size={16} /></button>}{selectedDeletedClipId && <button className="timeline-tool restore" aria-label="Restore segment" title="Restore segment" onClick={onRestoreClip}><ArrowCounterClockwise size={16} /></button>}</>}</span>
+        <span className="timeline-heading-actions"><TimelineSettings timelineWindow={timelineWindow} onViewPitch={onViewPitch} viewDeleted={viewDeleted} onViewDeletedChange={onViewDeletedChange} onTimelineWindowChange={onTimelineWindowChange} /></span>
       </div>
       <div className="timeline-viewport">
         <div className="timeline-canvas" style={{ width: canvasWidth }}>
           <div className="timeline-program-grid">
             <div className="timeline-track-label program-track-label">{mode === "cut" ? "Program" : "Recording"}</div>
-            <div className={`timeline ${mode} timeline-track-content`} role="slider" tabIndex={0} aria-label="Video timeline" onClick={onSeek}>
+            <div className={`timeline ${mode} timeline-track-content ${splitMode ? "split-mode" : ""}`} role="slider" tabIndex={0} aria-label="Video timeline" onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; if (splitMode && mode === "cut") { const bounds = event.currentTarget.getBoundingClientRect(); onSplitAt(((event.clientX - bounds.left) / bounds.width) * timelineDuration); } else onSeek(event); }}>
               {multiSource ? <ProgramMediaStrip ranges={ranges} /> : <><ThumbnailStrip thumbnails={thumbnails} /><Waveform peaks={waveform} /></>}
               {mode === "original" ? <SourceHighlights ranges={ranges.filter((range) => range.sourceId === project?.mediaLibrary.primarySourceId)} duration={duration} /> : <CutDividers project={project} ranges={ranges} selectedId={selectedClipId} onSelect={onSelectClip} onTrim={onTrim} />}
               <TrackPlayhead playhead={playhead} />
@@ -824,19 +893,20 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
             <div className="timeline-auxiliary-grid">
               <div className="timeline-track-label timeline-scale-label" aria-hidden="true" />
               <div className="timeline-scale"><span>0:00</span><span>{formatTime(timelineDuration)}</span></div>
+              {mode === "cut" && project && viewDeleted && <DeletedProgramTrack deleted={project.programTimeline.deletedClips || []} duration={timelineDuration} selectedId={selectedDeletedClipId} onSelect={onSelectDeletedClip} />}
               {mode === "cut" && project && <ImageOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onOverlayTimingChange} onCandidateSelect={onCandidateSelect} />}
               {mode === "cut" && project && <CutoutOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onCutoutTimingChange} />}
               {mode === "cut" && project && <VideoOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onVideoOverlayTimingChange} />}
+              {mode === "cut" && project && <TextOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onTextOverlayTimingChange} onUpdate={onTextOverlayUpdate} />}
             </div>
           </div>
         </div>
       </div>
-      {mode === "cut" && project && <TimelineToolbox project={project} selectedId={selectedClipId} onRemove={onRemoveClip} />}
     </section>
   );
 }
 
-function TimelineSettings({ timelineWindow, onViewPitch, onTimelineWindowChange }: TimelineSettingsProps) {
+function TimelineSettings({ timelineWindow, onViewPitch, viewDeleted, onViewDeletedChange, onTimelineWindowChange }: TimelineSettingsProps) {
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -845,7 +915,7 @@ function TimelineSettings({ timelineWindow, onViewPitch, onTimelineWindowChange 
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", dismiss); };
   }, []);
   const viewPitch = () => { setOpen(false); onViewPitch(); };
-  return <div className="timeline-settings" ref={container}><button aria-label="Timeline settings" title="Timeline settings" aria-expanded={open} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} /></button>{open && <div className="timeline-settings-menu"><label>Width<select aria-label="Timeline width" value={timelineWindow} onChange={(event) => onTimelineWindowChange(event.target.value as TimelineWindow)}><option value="auto">Auto</option><option value="15">15s</option><option value="60">1 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><button className="view-pitch" onClick={viewPitch}>View pitch</button></div>}</div>;
+  return <div className="timeline-settings" ref={container}><button aria-label="Timeline settings" title="Timeline settings" aria-expanded={open} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} /></button>{open && <div className="timeline-settings-menu"><label>Width<select aria-label="Timeline width" value={timelineWindow} onChange={(event) => onTimelineWindowChange(event.target.value as TimelineWindow)}><option value="auto">Auto</option><option value="15">15s</option><option value="60">1 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><button className="view-pitch" onClick={viewPitch}>View pitch</button><label className="view-deleted"><input type="checkbox" checked={viewDeleted} onChange={(event) => onViewDeletedChange(event.target.checked)} />View deleted</label></div>}</div>;
 }
 
 function PitchPopup({ artifact, mode, ranges, duration, playheadRatio, status, onSeekRatio, onClose }: PitchPopupProps) {
@@ -861,10 +931,8 @@ function TrackPlayhead({ playhead }: { playhead: string }) {
   return <span className="track-playhead" aria-hidden="true" style={{ left: playhead }} />;
 }
 
-function TimelineToolbox({ project, selectedId, onRemove }: TimelineToolboxProps) {
-  const index = project.programTimeline.clips.findIndex((clip) => clip.id === selectedId);
-  const clip = project.programTimeline.clips[index];
-  return <div className="timeline-toolbox"><span>{clip && <small>{clip.label} · {clip.sourceStart.toFixed(2)}–{clip.sourceEnd.toFixed(2)}s</small>}</span><div>{clip?.kind === "source" && <button className="remove-program-clip" onClick={onRemove}>Remove</button>}</div></div>;
+function DeletedProgramTrack({ deleted, duration, selectedId, onSelect }: DeletedProgramTrackProps) {
+  return <><div className="timeline-track-label deleted-track-label">Deleted</div><div className="deleted-program-track timeline-track-content">{deleted.map((item) => <button key={item.clip.id} className={`deleted-program-clip ${selectedId === item.clip.id ? "selected" : ""}`} style={{ left: `${(item.formerProgramStart / duration) * 100}%`, width: `${((item.formerProgramEnd - item.formerProgramStart) / duration) * 100}%` }} aria-label={`Select deleted ${item.clip.label}`} onClick={() => onSelect(item.clip.id)}>{item.clip.label}</button>)}</div></>;
 }
 
 function AnalysisPanel({ project, duration, previewTakeId, onSeek, onUpdate, onSelect, onPreview }: AnalysisPanelProps) {
@@ -1063,6 +1131,13 @@ function failedCutoutStatus(projectId: string, error: unknown): CutoutJobStatus 
   return { jobId: "cutout-ui-error", projectId, overlayId: "", state: "failed", progress: 0, message: "Cutout failed", error: error instanceof Error ? error.message : String(error), project: null };
 }
 
+function recoverableCutoutStatus(project: VideoProject): CutoutJobStatus | null {
+  const overlay = project.cutoutOverlays.find((candidate) => candidate.processing.jobId && ["queued", "processing"].includes(candidate.processing.status));
+  if (!overlay?.processing.jobId) return null;
+  const state = overlay.processing.status === "processing" ? "processing" : "queued";
+  return { jobId: overlay.processing.jobId, projectId: project.id, overlayId: overlay.id, state, progress: overlay.processing.progress || 0, message: overlay.processing.phase ? overlay.processing.phase.replaceAll("-", " ") : "Cutout queued", error: overlay.processing.error, project };
+}
+
 async function cancelExportRequest(projectId: string, jobId: string): Promise<ExportJobStatus> {
   const response = await fetch(`/api/projects/${projectId}/exports/${jobId}`, { method: "DELETE" });
   const result = await response.json();
@@ -1097,7 +1172,7 @@ function downloadCompletedExport(projectId: string | null, status: ExportJobStat
 }
 
 function failedExportStatus(projectId: string, preset: ExportPreset, error: unknown): ExportJobStatus {
-  return { jobId: "export-ui-error", projectId, preset, state: "failed", progress: 0, message: "Export failed.", receipt: null, error: error instanceof Error ? error.message : String(error), startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
+  return { jobId: "export-ui-error", projectId, preset, state: "failed", progress: 0, processedSeconds: 0, totalSeconds: 0, etaSeconds: null, message: "Export failed.", receipt: null, error: error instanceof Error ? error.message : String(error), startedAt: new Date().toISOString(), finishedAt: new Date().toISOString() };
 }
 
 async function waitForSeek(video: HTMLVideoElement) {
@@ -1158,7 +1233,7 @@ function useWaveformExtraction(source: string, setWaveform: Dispatch<SetStateAct
 }
 
 type SourceState = { name: string; url: string; objectUrl: boolean };
-type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; addMediaOpen: boolean; onAddMedia: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onVideoOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
+type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; addMediaOpen: boolean; onAddMedia: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onVideoOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onTextOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onTextOverlayUpdate: (overlay: TextOverlay) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; selectedDeletedClipId: string | null; onSelectDeletedClip: (id: string) => void; onRemoveClip: () => void; onSplitAt: (cutTime: number) => void; onRestoreClip: () => void; splitMode: boolean; onSplitModeChange: () => void; viewDeleted: boolean; onViewDeletedChange: (visible: boolean) => void };
 type ExportNoticeProps = { status: ExportJobStatus | null; onCancel: () => void; onRetry: () => void };
 type AnalysisPanelProps = { project: VideoProject; duration: number; previewTakeId: string | null; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onPreview: (sceneId: string, takeId: string) => void };
 type SceneRowsProps = Omit<AnalysisPanelProps, "project"> & { scene: SceneProposal };
@@ -1166,9 +1241,9 @@ type TakeRowProps = Pick<AnalysisPanelProps, "duration" | "onUpdate" | "onSelect
 type TimelineTrimHandler = (clipId: string, edge: "start" | "end", value: number, commit: boolean) => void;
 type TimelineTrimHandleProps = { edge: "start" | "end"; range: SourceRange; before: number; minimum: number; maximum: number; total: number; onPreview: (preview: TimelineTrimPreview | null) => void; onTrim: TimelineTrimHandler };
 type TimelineTrimDrag = { left: number; width: number; before: number; minimum: number; total: number; maximum: number; next: number };
-type TimelineSettingsProps = { timelineWindow: TimelineWindow; onViewPitch: () => void; onTimelineWindowChange: (window: TimelineWindow) => void };
+type TimelineSettingsProps = { timelineWindow: TimelineWindow; onViewPitch: () => void; viewDeleted: boolean; onViewDeletedChange: (visible: boolean) => void; onTimelineWindowChange: (window: TimelineWindow) => void };
 type PitchPopupProps = { artifact: PitchArtifact | null; mode: ViewMode; ranges: SourceRange[]; duration: number; playheadRatio: number; status: PitchStatus; onSeekRatio: (ratio: number) => void; onClose: () => void };
-type TimelineToolboxProps = { project: VideoProject; selectedId: string | null; onRemove: () => void };
+type DeletedProgramTrackProps = { deleted: DeletedProgramClip[]; duration: number; selectedId: string | null; onSelect: (id: string) => void };
 type PendingMediaLoad = { time: number; rangeIndex: number; play: boolean };
 type TakePreview = { sceneId: string; takeId: string; start: number; end: number };
 type WorkflowStep = "projects" | ViewMode;
@@ -1186,10 +1261,11 @@ const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 
 function ignoreOverlaySelection(_id: string) {}
 function ignoreOverlayLayout(_id: string, _layout: OverlayLayout, _commit: boolean) {}
+function ignoreTextPosition(_id: string, _x: number, _y: number, _persist: boolean) {}
 
-import { ArrowRight, ArrowsOut, Check, Export as ExportIcon, FilmStrip, GitBranch, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowRight, ArrowsOut, Check, Export as ExportIcon, FilmStrip, GitBranch, List, ListChecks, Pause, Play, Plus, Scissors, SlidersHorizontal, SpeakerHigh, SpeakerSlash, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
-import type { CutProposal, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RecordingPlan, RecordingPlanOutput, SceneProposal, TakeProposal, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
+import type { CutProposal, DeletedProgramClip, ExportPreset, OverlayLayout, ProgramClip, ProjectTrashReceipt, RecordingPlan, RecordingPlanOutput, SceneProposal, TakeProposal, TextOverlay, TimelineWindow, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
 import { cutDuration, cutTimeFromSource, formatTime, sourceLocationFromCutTime, type SourceRange, type ViewMode } from "./editor-model";
 import { EditableOverlayStage, ImageOverlayTracks } from "./ImageOverlayEditors";
@@ -1208,12 +1284,15 @@ import { ProjectSaveQueue, type ProjectSaveStatus } from "./ProjectSaveQueue";
 import { timelineCanvasPercent } from "./TimelineWindowModel";
 import { ProjectRail } from "./ProjectRail";
 import { displayProjectTitle } from "./ProjectTitle";
-import { insertProgramClip, programRanges, removeProgramClip, sourceProgramClip, syncSceneClip, trimProgramClip } from "./ProgramTimelineModel";
+import { deleteProgramClip, insertProgramClip, programRanges, replaceProgramClip, restoreProgramClip, sourceProgramClip, splitProgramClip, syncSceneClip, trimProgramClip } from "./ProgramTimelineModel";
+import { shiftSelectedCutOverlays } from "./ProgramDeleteModel";
 import { SourceBrowser } from "./SourceBrowser";
 import { CutoutOverlayStage, CutoutOverlayTracks } from "./CutoutOverlayEditors";
 import { cutoutWithProgramInterval } from "./CutoutOverlayModel";
 import { VideoOverlayStage, VideoOverlayTracks } from "./VideoOverlayEditors";
 import { videoOverlayWithProgramInterval } from "./VideoOverlayModel";
+import { TextOverlayStage, TextOverlayTracks } from "./TextOverlayEditors";
+import { textOverlayWithProgramInterval } from "./TextOverlayModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
 import { legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
 import { paintVideoFrame, superviseVideoPainting } from "./VideoPaintSurface";

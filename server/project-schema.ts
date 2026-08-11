@@ -5,12 +5,14 @@ export function normalizeVideoProject(project: VideoProject): VideoProject {
   const overlays = (project.overlays || []).map((overlay) => ({ ...overlay, bundleId: overlay.bundleId || null }));
   const cutoutOverlays = project.cutoutOverlays || [];
   const videoOverlays = project.videoOverlays || [];
+  const textOverlays = project.textOverlays || [];
   const exportHistory = (project.exportHistory || []).map((receipt, index) => normalizeExportReceipt(receipt, index + 1));
   const mediaLibrary = normalizeMediaLibrary(project.mediaLibrary || legacyMediaLibrary(project));
-  const programTimeline = project.programTimeline || createProgramTimeline(project.scenes, mediaLibrary.primarySourceId, project.createdAt || "");
+  const timeline = project.programTimeline || createProgramTimeline(project.scenes, mediaLibrary.primarySourceId, project.createdAt || "");
+  const programTimeline = { ...timeline, deletedClips: timeline.deletedClips || [] };
   const recordingPlan = recordingPlanForProject({ ...project, mediaLibrary, programTimeline } as VideoProject);
   const editorPreferences = project.editorPreferences || { timelineWindow: "auto" };
-  return { ...project, schemaVersion: 1, revision: project.revision || 0, recordingPlan, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, videoOverlays, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
+  return { ...project, schemaVersion: 1, revision: project.revision || 0, recordingPlan, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, videoOverlays, textOverlays, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
 }
 
 export function validateVideoProject(input: VideoProject): VideoProject {
@@ -26,9 +28,31 @@ export function validateVideoProject(input: VideoProject): VideoProject {
   project.overlays.forEach((overlay) => validateOverlay(project, overlay));
   project.cutoutOverlays.forEach((overlay) => validateCutoutOverlay(project, overlay));
   project.videoOverlays.forEach((overlay) => validateVideoOverlay(project, overlay));
+  project.textOverlays.forEach((overlay) => validateTextOverlay(project, overlay));
   if (project.pitchAnalysis) validatePitchReference(project.pitchAnalysis);
   project.exportHistory.forEach(validateExportReceipt);
   return project;
+}
+
+function validateTextOverlay(project: VideoProject, overlay: TextOverlay) {
+  assert(/^text\.[a-z0-9.-]+$/.test(overlay.id) && overlay.kind === "text" && ["title", "caption"].includes(overlay.role), `Invalid text overlay: ${overlay.id}`);
+  assert(overlay.text.trim().length > 0 && overlay.text.length <= 500, `Invalid text content: ${overlay.id}`);
+  if (overlay.target.type === "selected-cut") assert(overlay.target.start >= 0 && overlay.target.end > overlay.target.start, `Invalid text interval: ${overlay.id}`);
+  else validateTextClipTarget(project, overlay);
+  assert(overlay.layout.x >= 0 && overlay.layout.x <= 1 && overlay.layout.y >= 0 && overlay.layout.y <= 1 && overlay.layout.maxWidth > 0 && overlay.layout.maxWidth <= 1, `Invalid text layout: ${overlay.id}`);
+  assert(overlay.style.fontFamily === "system-sans" && [400, 600, 700].includes(overlay.style.fontWeight) && overlay.style.fontSize >= 12 && overlay.style.fontSize <= 240, `Invalid text style: ${overlay.id}`);
+  assert(/^#[a-fA-F0-9]{6}$/.test(overlay.style.color) && overlay.opacity >= 0 && overlay.opacity <= 1 && Number.isInteger(overlay.layer), `Invalid text color/layer: ${overlay.id}`);
+  assert(overlay.style.backgroundColor === null || /^#[a-fA-F0-9]{6}$/.test(overlay.style.backgroundColor), `Invalid text background: ${overlay.id}`);
+  assert(overlay.style.strokeColor === null || /^#[a-fA-F0-9]{6}$/.test(overlay.style.strokeColor), `Invalid text stroke: ${overlay.id}`);
+  assert(overlay.style.strokeWidth >= 0 && overlay.style.strokeWidth <= 12 && ["left", "center", "right"].includes(overlay.style.align), `Invalid text decoration: ${overlay.id}`);
+}
+
+function validateTextClipTarget(project: VideoProject, overlay: TextOverlay) {
+  const target = overlay.target;
+  if (target.type !== "program-clip") return;
+  const clip = project.programTimeline.clips.find((item) => item.id === target.clipId);
+  assert(Boolean(clip) && clip!.sourceId === target.sourceId, `Unknown text clip target: ${overlay.id}`);
+  assert(target.sourceStart >= clip!.sourceStart && target.sourceEnd <= clip!.sourceEnd + 0.001 && target.sourceEnd > target.sourceStart, `Text source interval exceeds clip: ${overlay.id}`);
 }
 
 function validateRecordingPlan(project: VideoProject) {
@@ -60,8 +84,14 @@ function validateMediaSource(source: VideoMediaSource, ids: Set<string>) {
   validateMediaOrigin(source);
   assert(source.rawMediaId === undefined || source.rawMediaId === null || /^raw\.[a-f0-9]{16}$/.test(source.rawMediaId), `Invalid raw media reference: ${source.id}`);
   if (source.cache) validateMediaCache(source.cache, source.id);
+  if (source.transcript) validateMediaTranscript(source.transcript, source.id);
   if (source.metadata) validateMediaMetadata(source.metadata, source.id);
   ids.add(source.id);
+}
+
+function validateMediaTranscript(transcript: MediaTranscriptReference, sourceId: string) {
+  assert(transcript.version === 1 && /^cache\/transcripts\/[a-f0-9]{64}\.json$/.test(transcript.artifactPath), `Unsafe media transcript path: ${sourceId}`);
+  assert(transcript.language.trim().length > 0 && Number.isInteger(transcript.wordCount) && transcript.wordCount >= 0, `Invalid media transcript: ${sourceId}`);
 }
 
 function validateVideoOverlay(project: VideoProject, overlay: VideoOverlay) {
@@ -103,6 +133,23 @@ function validateProgramTimeline(project: VideoProject) {
     else assert(clip.kind === "source" && clip.sceneId === null && clip.takeId === null, `Invalid source clip: ${clip.id}`);
     ids.add(clip.id);
   });
+  (project.programTimeline.deletedClips || []).forEach((deleted) => {
+    validateProgramClip(project, deleted.clip, ids);
+    assert(Number.isInteger(deleted.formerIndex) && deleted.formerIndex >= 0 && deleted.formerProgramStart >= 0 && deleted.formerProgramEnd > deleted.formerProgramStart, `Invalid deleted clip context: ${deleted.clip.id}`);
+    assert(Boolean(deleted.editorialState?.overlays && deleted.editorialState?.videoOverlays && deleted.editorialState?.textOverlays), `Missing deleted clip editorial state: ${deleted.clip.id}`);
+    deleted.editorialState.overlays.forEach((overlay) => validateOverlay(project, overlay));
+    deleted.editorialState.videoOverlays.forEach((overlay) => validateVideoOverlay(project, overlay));
+    deleted.editorialState.textOverlays.forEach((overlay) => validateTextOverlay(project, overlay));
+  });
+}
+
+function validateProgramClip(project: VideoProject, clip: ProgramClip, ids: Set<string>) {
+  assert(!ids.has(clip.id) && /^clip\.[a-z0-9.-]+$/.test(clip.id), `Invalid program clip id: ${clip.id}`);
+  assert(project.mediaLibrary.sources.some((source) => source.id === clip.sourceId), `Unknown program clip source: ${clip.id}`);
+  assert(clip.label.trim().length > 0 && clip.sourceStart >= 0 && clip.sourceEnd - clip.sourceStart >= 0.08, `Invalid program clip interval: ${clip.id}`);
+  if (clip.kind === "scene") validateSceneClip(project, clip);
+  else assert(clip.kind === "source" && clip.sceneId === null && clip.takeId === null, `Invalid source clip: ${clip.id}`);
+  ids.add(clip.id);
 }
 
 function validateSceneClip(project: VideoProject, clip: ProgramClip) {
@@ -132,6 +179,8 @@ function validateCutoutProcessing(overlay: SubjectCutoutOverlay) {
   assert(processing.recipePath === `${root}recipe.json`, `Unsafe cutout recipe path: ${overlay.id}`);
   assert(processing.previewPath === null || processing.previewPath === `${root}preview.webm`, `Unsafe cutout preview path: ${overlay.id}`);
   assert(processing.renderPath === null || processing.renderPath === `${root}render.mov`, `Unsafe cutout render path: ${overlay.id}`);
+  assert(processing.statusPath === undefined || processing.statusPath === null || processing.statusPath === `${root}status.json`, `Unsafe cutout status path: ${overlay.id}`);
+  assert(processing.progress === undefined || (processing.progress >= 0 && processing.progress <= 1), `Invalid cutout progress: ${overlay.id}`);
   if (processing.status === "ready") assert(Boolean(processing.previewPath && processing.renderPath), `Incomplete cutout artifacts: ${overlay.id}`);
 }
 
@@ -172,13 +221,14 @@ function normalizeCadence(cadence: ExportCadence | null | undefined, duration: n
 function validateExportQuality(receipt: ExportReceipt) {
   assert(Boolean(receipt.sourceCadence && receipt.outputCadence && receipt.qualityProfile), "Missing export quality metadata.");
   assert(receipt.sourceCadence!.averageFps > 0 && receipt.outputCadence!.averageFps > 0 && receipt.outputCadence!.frameCount > 0, "Invalid export cadence.");
-  assert(receipt.qualityProfile!.crf === 14 && receipt.qualityProfile!.preset === "slow", "Unsupported export quality profile.");
+  assert((receipt.qualityProfile!.crf === 14 && receipt.qualityProfile!.preset === "slow") || (receipt.qualityProfile!.crf === 18 && receipt.qualityProfile!.preset === "veryfast") || (receipt.qualityProfile!.encoder === "h264_videotoolbox" && receipt.qualityProfile!.preset === "hardware" && receipt.qualityProfile!.crf === null), "Unsupported export quality profile.");
 }
 
 function validateExportPreset(receipt: ExportReceipt) {
   assert(Boolean(receipt.preset && receipt.strategy && receipt.container), "Missing export preset metadata.");
   assert(receipt.preset !== "original-format" || (receipt.codec.video === "hevc" && receipt.container === "mov" && receipt.strategy === "stream-copy"), "Original-format export must preserve HEVC/MOV by stream copy.");
   assert(receipt.preset !== "tiktok-60" || Boolean(receipt.codec.video === "h264" && receipt.container === "mp4" && receipt.strategy === "full-transcode" && receipt.qualityProfile), "Invalid TikTok export receipt.");
+  assert(receipt.preset !== "tiktok-software" || Boolean(receipt.codec.video === "h264" && receipt.container === "mp4" && receipt.strategy === "full-transcode" && receipt.qualityProfile?.encoder === "libx264"), "Invalid software export receipt.");
 }
 
 function validateBundles(project: VideoProject) {
@@ -265,6 +315,6 @@ function normalizeMediaLibrary(library: MediaLibrary): MediaLibrary {
 
 const emptySource = { sourceUrl: null, attribution: null, license: null };
 
-import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, OverlayLayout, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, VideoMediaMetadata, VideoMediaSource, VideoOverlay, VideoProject } from "../src/analysis-model";
+import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, MediaTranscriptReference, OverlayLayout, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, TextOverlay, VideoMediaMetadata, VideoMediaSource, VideoOverlay, VideoProject } from "../src/analysis-model";
 import { createProgramTimeline } from "../src/ProgramTimelineModel";
 import { recordingPlanForProject } from "../src/RecordingPlanModel";

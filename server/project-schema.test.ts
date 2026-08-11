@@ -64,11 +64,21 @@ describe("video project schema", () => {
     project.cutoutOverlays[0].processing.renderPath = "../outside.mov";
     expect(() => validateVideoProject(project)).toThrow("Unsafe cutout render path");
   });
+
+  it("validates durable deleted program segments and their editorial snapshot", () => {
+    const project = fixtureProject();
+    const clip = project.programTimeline.clips[0];
+    project.programTimeline.clips = [];
+    project.programTimeline.deletedClips = [{ clip, formerIndex: 0, previousClipId: null, nextClipId: null, formerProgramStart: 0, formerProgramEnd: 1, deletedAt: "now", editorialState: { overlays: project.overlays, videoOverlays: [], textOverlays: [] } }];
+    expect(validateVideoProject(project).programTimeline.deletedClips?.[0].clip.id).toBe(clip.id);
+    project.programTimeline.deletedClips[0].formerProgramEnd = 0;
+    expect(() => validateVideoProject(project)).toThrow("Invalid deleted clip context");
+  });
 });
 
 function fixtureProject(): VideoProject {
   const take = { id: "take", order: 1, start: 4, end: 6, label: "Take 1", reason: "", transcript: "", confidence: 1, selected: true };
-  return { schemaVersion: 1, revision: 0, id: "project", title: "", sourcePath: "/tmp/source.mov", sourceName: "source.mov", createdAt: "", provider: "fluid-audio", model: "parakeet-tdt-0.6b-v2", transcript: "", words: [], requestSummary: "", scenes: [{ id: "scene", order: 1, label: "Scene", reason: "", takes: [take] }], cuts: [{ ...take, id: "scene-take" }], artifactsDirectory: "", mediaLibrary: { version: 1, primarySourceId: "media.primary", sources: [{ id: "media.primary", kind: "video", role: "instruction", label: "source.mov", origin: { type: "local", path: "/tmp/source.mov" }, cache: null, metadata: null, createdAt: "" }] }, programTimeline: { version: 1, clips: [{ id: "clip.scene.scene", kind: "scene", sourceId: "media.primary", label: "Scene", sourceStart: 0, sourceEnd: 1, sceneId: "scene", takeId: "take", createdAt: "" }] }, editorPreferences: { timelineWindow: "auto" }, assetLibrary: { version: 1, assets: [{ id: "image-123", kind: "image", label: "Image", originalName: "image.png", relativePath: "assets/image-123.png", mimeType: "image/png", width: 10, height: 10, bytes: 100, sha256: "abc", importedAt: "", source: { sourceUrl: null, attribution: null, license: null } }], bundles: [] }, overlays: [{ id: "overlay", kind: "image", assetId: "image-123", bundleId: null, label: "Overlay", target: { type: "take", sceneId: "scene", takeId: "take", start: 0, end: 1 }, layout: { anchor: "top-left", x: 0.1, y: 0.2, width: 0.3, height: null, fit: "contain", placementIntent: "avoid-face-left" }, layer: 10, opacity: 1, createdAt: "" }], cutoutOverlays: [], videoOverlays: [], pitchAnalysis: null, exportHistory: [] };
+  return { schemaVersion: 1, revision: 0, id: "project", title: "", sourcePath: "/tmp/source.mov", sourceName: "source.mov", createdAt: "", provider: "fluid-audio", model: "parakeet-tdt-0.6b-v2", transcript: "", words: [], requestSummary: "", scenes: [{ id: "scene", order: 1, label: "Scene", reason: "", takes: [take] }], cuts: [{ ...take, id: "scene-take" }], artifactsDirectory: "", mediaLibrary: { version: 1, primarySourceId: "media.primary", sources: [{ id: "media.primary", kind: "video", role: "instruction", label: "source.mov", origin: { type: "local", path: "/tmp/source.mov" }, cache: null, metadata: null, createdAt: "" }] }, programTimeline: { version: 1, clips: [{ id: "clip.scene.scene", kind: "scene", sourceId: "media.primary", label: "Scene", sourceStart: 0, sourceEnd: 1, sceneId: "scene", takeId: "take", createdAt: "" }] }, editorPreferences: { timelineWindow: "auto" }, assetLibrary: { version: 1, assets: [{ id: "image-123", kind: "image", label: "Image", originalName: "image.png", relativePath: "assets/image-123.png", mimeType: "image/png", width: 10, height: 10, bytes: 100, sha256: "abc", importedAt: "", source: { sourceUrl: null, attribution: null, license: null } }], bundles: [] }, overlays: [{ id: "overlay", kind: "image", assetId: "image-123", bundleId: null, label: "Overlay", target: { type: "take", sceneId: "scene", takeId: "take", start: 0, end: 1 }, layout: { anchor: "top-left", x: 0.1, y: 0.2, width: 0.3, height: null, fit: "contain", placementIntent: "avoid-face-left" }, layer: 10, opacity: 1, createdAt: "" }], cutoutOverlays: [], videoOverlays: [], textOverlays: [], pitchAnalysis: null, exportHistory: [] };
 }
 
 import type { VideoProject } from "../src/analysis-model";

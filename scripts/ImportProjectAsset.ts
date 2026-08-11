@@ -57,7 +57,7 @@ void main().catch((error) => {
   process.exitCode = 1;
 });
 
-const ffprobePath = process.env.CUTROOM_FFPROBE || "ffprobe";
+const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
 const mimeTypes = { png: "image/png", jpg: "image/jpeg", webp: "image/webp" } as const;
 type ImageExtension = keyof typeof mimeTypes;
 type ImageInfo = { extension: ImageExtension; mimeType: typeof mimeTypes[ImageExtension]; width: number; height: number };

@@ -26,10 +26,11 @@ async function handleProjectRequest(route: ProjectRoute, request: IncomingMessag
     if (route.action === "media" && request.method === "GET") return serveMedia(route.id, request, response);
     if (route.action === "media-references" && request.method === "POST") return sendJson(response, 201, await addReferenceMedia(route.id, request));
     if (route.action === "media-source" && route.itemId && request.method === "GET") return serveMediaSource(route.id, route.itemId, request, response);
+    if (route.action === "media-transcript" && route.itemId && request.method === "GET") return serveMediaTranscript(route.id, route.itemId, response);
     if (route.action === "media-source" && route.itemId && request.method === "DELETE") return sendJson(response, 200, await removeRemoteReference(route.id, route.itemId));
     if (route.action === "media-cache" && route.itemId && request.method === "POST") return sendJson(response, 200, await regenerateRemoteReference(route.id, route.itemId));
     if (route.action === "cutouts" && request.method === "POST") return sendJson(response, 202, await startCutoutJob(route.id, await cutoutInput(request)));
-    if (route.action === "cutout-job" && route.itemId && request.method === "GET") return sendJson(response, 200, cutoutJobStatus(route.id, route.itemId));
+    if (route.action === "cutout-job" && route.itemId && request.method === "GET") return sendJson(response, 200, await durableCutoutJobStatus(route.id, route.itemId));
     if (route.action === "cutout-preview" && route.itemId && request.method === "GET") return serveCutoutPreview(route.id, route.itemId, request, response);
     if (route.action === "asset" && route.itemId && request.method === "GET") return serveAsset(route.id, route.itemId, response);
     if (route.action === "pitch" && request.method === "GET") return sendJson(response, 200, await readPitchArtifact(route.id));
@@ -74,13 +75,14 @@ async function trashStoredProject(id: string, request: IncomingMessage) {
 async function exportPreset(request: IncomingMessage): Promise<ExportPreset> {
   const body = await readBody(request);
   const preset = body ? (JSON.parse(body) as { preset?: string }).preset : "original-format";
-  if (preset !== "original-format" && preset !== "tiktok-60") throw new Error(`Unsupported export preset: ${preset}`);
+  if (preset !== "original-format" && preset !== "tiktok-60" && preset !== "tiktok-software") throw new Error(`Unsupported export preset: ${preset}`);
   return preset;
 }
 
 async function addReferenceMedia(projectId: string, request: IncomingMessage) {
-  const input = JSON.parse(await readBody(request)) as { url?: string; label?: string };
+  const input = JSON.parse(await readBody(request)) as { url?: string; label?: string; cachePath?: string; transcriptPath?: string };
   if (typeof input.url !== "string" || typeof input.label !== "string") throw new Error("Reference URL and label are required.");
+  if (input.cachePath) return attachCachedRemoteReference({ projectId, url: input.url, label: input.label, path: input.cachePath, transcriptPath: input.transcriptPath });
   return addRemoteReference({ projectId, url: input.url, label: input.label });
 }
 
@@ -108,6 +110,15 @@ async function serveMediaSource(id: string, sourceId: string, request: IncomingM
   const source = project.mediaLibrary.sources.find((item) => item.id === sourceId);
   if (!source) throw new Error(`Unknown media source: ${sourceId}`);
   return serveVideoPath(mediaSourcePath(source), request, response);
+}
+
+async function serveMediaTranscript(id: string, sourceId: string, response: ServerResponse) {
+  const project = await readStoredProject(id);
+  const source = project.mediaLibrary.sources.find((item) => item.id === sourceId);
+  if (!source?.transcript) throw new Error(`Transcript is unavailable for media source: ${sourceId}`);
+  const body = await readFile(join(runtimeRoot, source.transcript.artifactPath));
+  response.writeHead(200, { "content-type": "application/json", "content-length": body.length, "cache-control": "no-store" });
+  response.end(body);
 }
 
 async function serveAsset(id: string, assetId: string, response: ServerResponse) {
@@ -155,6 +166,8 @@ function parseRoute(rawUrl = "/"): ProjectRoute | null {
   if (cutoutJob) return { id: cutoutJob[1], action: "cutout-job", itemId: cutoutJob[2] };
   const cache = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/(media\.[a-z0-9.]+)\/cache$/);
   if (cache) return { id: cache[1], action: "media-cache", itemId: cache[2] };
+  const transcript = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/(media\.[a-z0-9.]+)\/transcript$/);
+  if (transcript) return { id: transcript[1], action: "media-transcript", itemId: transcript[2] };
   const media = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/(media\.[a-z0-9.]+)$/);
   if (media) return { id: media[1], action: "media-source", itemId: media[2] };
   const file = path.match(/^\/api\/projects\/([a-z0-9-]+)\/exports\/(export-[a-z0-9-]+)\/file$/);
@@ -205,12 +218,12 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: "cutroom-projects", event, ...details }));
 }
 
-type ProjectAction = "catalog" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "exports" | "export-job" | "export-file";
+type ProjectAction = "catalog" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "exports" | "export-job" | "export-file";
 type ProjectRoute = { id: string; action: ProjectAction; itemId: string | null };
 type ByteRange = { start: number; end: number };
 
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import type { Plugin } from "vite";
@@ -220,8 +233,9 @@ import { projectsRoot } from "./media-analysis";
 import { analyzeProjectPitch, readPitchArtifact } from "./pitch-analysis";
 import { validateVideoProject } from "./project-schema";
 import { ProjectRevisionConflict, projectDirectory, readStoredProject, writeStoredProject } from "./project-store";
-import { addRemoteReference, mediaSourcePath, regenerateRemoteReference, removeRemoteReference } from "./ReferenceMediaCache";
+import { addRemoteReference, attachCachedRemoteReference, mediaSourcePath, regenerateRemoteReference, removeRemoteReference } from "./ReferenceMediaCache";
+import { runtimeRoot } from "./RuntimeStorage";
 import { cancelExportJob, exportJobStatus, exportOverview, startExportJob } from "./VideoExportJobs";
 import { listProjects, renameProject, trashProject } from "./ProjectCatalog";
-import { cutoutJobStatus, startCutoutJob } from "./CutoutJobs";
+import { durableCutoutJobStatus, startCutoutJob } from "./CutoutJobs";
 import { attachRawMedia, detachRawMedia, ingestRawMedia, readRawMediaLibrary } from "./RawMediaLibrary";

@@ -105,4 +105,4 @@ import { projectDirectory, readStoredProject, writeStoredProject } from "./proje
 import { validatePitchArtifact } from "./pitch-schema";
 
 const execFile = promisify(execFileCallback);
-const ffmpegPath = process.env.CUTROOM_FFMPEG || "ffmpeg";
+const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";

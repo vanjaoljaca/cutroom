@@ -1,8 +1,8 @@
 async function main() {
   const projectId = requiredArgument("--project");
   const preset = optionalArgument("--preset") || "original-format";
-  if (preset !== "original-format" && preset !== "tiktok-60") throw new Error(`Unsupported --preset: ${preset}`);
-  const receipt = await renderProjectVideo(projectId, { preset, onProgress: (progress) => console.info(JSON.stringify({ scope: "cutroom-export", event: "export_cli_progress", projectId, preset, progress })) });
+  if (preset !== "original-format" && preset !== "tiktok-60" && preset !== "tiktok-software") throw new Error(`Unsupported --preset: ${preset}`);
+  const receipt = await renderProjectVideo(projectId, { preset, onProgress: (progress) => console.info(JSON.stringify({ scope: "cutroom-export", event: "export_cli_progress", projectId, preset, ...progress })) });
   console.info(JSON.stringify({ scope: "cutroom-export", event: "export_cli_completed", projectId, receipt }));
 }
 

@@ -3,7 +3,7 @@ export function createProgramTimeline(scenes: SceneProposal[], primarySourceId: 
     id: sceneClipId(cut.sceneId!), kind: "scene" as const, sourceId: primarySourceId, label: cut.label,
     sourceStart: cut.start, sourceEnd: cut.end, sceneId: cut.sceneId!, takeId: cut.takeId!, createdAt,
   }));
-  return { version: 1, clips };
+  return { version: 1, clips, deletedClips: [] };
 }
 
 export function programRanges(project: VideoProject): SourceRange[] {
@@ -27,6 +27,38 @@ export function moveProgramClip(timeline: ProgramTimeline, id: string, direction
 
 export function removeProgramClip(timeline: ProgramTimeline, id: string): ProgramTimeline {
   return { ...timeline, clips: timeline.clips.filter((clip) => clip.id !== id) };
+}
+
+export function deleteProgramClip(timeline: ProgramTimeline, id: string, editorialState: DeletedProgramClip["editorialState"], deletedAt: string): ProgramTimeline {
+  const formerIndex = timeline.clips.findIndex((clip) => clip.id === id);
+  const clip = timeline.clips[formerIndex];
+  if (!clip) return timeline;
+  const formerProgramStart = timeline.clips.slice(0, formerIndex).reduce((sum, item) => sum + item.sourceEnd - item.sourceStart, 0);
+  const deleted = { clip, formerIndex, previousClipId: timeline.clips[formerIndex - 1]?.id || null, nextClipId: timeline.clips[formerIndex + 1]?.id || null, formerProgramStart, formerProgramEnd: formerProgramStart + clip.sourceEnd - clip.sourceStart, deletedAt, editorialState };
+  return { ...timeline, clips: timeline.clips.filter((item) => item.id !== id), deletedClips: [...(timeline.deletedClips || []).filter((item) => item.clip.id !== id), deleted] };
+}
+
+export function restoreProgramClip(timeline: ProgramTimeline, id: string): ProgramTimeline {
+  const deleted = (timeline.deletedClips || []).find((item) => item.clip.id === id);
+  if (!deleted) return timeline;
+  const previous = deleted.previousClipId ? timeline.clips.findIndex((clip) => clip.id === deleted.previousClipId) : -1;
+  const next = deleted.nextClipId ? timeline.clips.findIndex((clip) => clip.id === deleted.nextClipId) : -1;
+  const index = previous >= 0 ? previous + 1 : next >= 0 ? next : clampIndex(deleted.formerIndex, timeline.clips.length);
+  return { ...timeline, clips: [...timeline.clips.slice(0, index), deleted.clip, ...timeline.clips.slice(index)], deletedClips: (timeline.deletedClips || []).filter((item) => item.clip.id !== id) };
+}
+
+export function replaceProgramClip(timeline: ProgramTimeline, id: string, clip: ProgramClip): ProgramTimeline {
+  if (!timeline.clips.some((item) => item.id === id)) return timeline;
+  return { ...timeline, clips: timeline.clips.map((item) => item.id === id ? { ...clip, id } : item) };
+}
+
+export function splitProgramClip(timeline: ProgramTimeline, id: string, sourceTime: number, rightId: string): ProgramTimeline {
+  const index = timeline.clips.findIndex((clip) => clip.id === id);
+  const clip = timeline.clips[index];
+  if (!clip || sourceTime - clip.sourceStart < minimumDuration || clip.sourceEnd - sourceTime < minimumDuration) return timeline;
+  const left = { ...clip, sourceEnd: sourceTime };
+  const right = { ...clip, id: rightId, sourceStart: sourceTime };
+  return { ...timeline, clips: [...timeline.clips.slice(0, index), left, right, ...timeline.clips.slice(index + 1)] };
 }
 
 export function trimProgramClip(timeline: ProgramTimeline, id: string, edge: "start" | "end", value: number): ProgramTimeline {
@@ -63,6 +95,6 @@ const minimumDuration = 0.08;
 
 export type SourceProgramClipInput = { id: string; sourceId: string; label: string; sourceStart: number; sourceEnd: number; createdAt: string };
 
-import type { ProgramClip, ProgramTimeline, SceneProposal, VideoProject } from "./analysis-model";
+import type { DeletedProgramClip, ProgramClip, ProgramTimeline, SceneProposal, VideoProject } from "./analysis-model";
 import type { SourceRange } from "./editor-model";
 import { selectedCutsFromScenes } from "./ProjectCutModel";

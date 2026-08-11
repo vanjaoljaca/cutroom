@@ -53,6 +53,7 @@ export type VideoProject = AnalysisResult & {
   overlays: ImageOverlay[];
   cutoutOverlays: SubjectCutoutOverlay[];
   videoOverlays: VideoOverlay[];
+  textOverlays: TextOverlay[];
   pitchAnalysis: PitchAnalysisReference | null;
   exportHistory: ExportReceipt[];
 };
@@ -127,8 +128,17 @@ export type VideoMediaSource = {
   rawMediaId?: string | null;
   origin: MediaOrigin;
   cache: RemoteMediaCache | null;
+  transcript?: MediaTranscriptReference | null;
   metadata: VideoMediaMetadata | null;
   createdAt: string;
+};
+
+export type MediaTranscriptReference = {
+  version: 1;
+  artifactPath: string;
+  language: string;
+  wordCount: number;
+  generatedAt: string;
 };
 
 export type RawMediaLibrary = { version: 1; records: RawMediaRecord[] };
@@ -182,6 +192,18 @@ export type VideoMediaMetadata = {
 export type ProgramTimeline = {
   version: 1;
   clips: ProgramClip[];
+  deletedClips?: DeletedProgramClip[];
+};
+
+export type DeletedProgramClip = {
+  clip: ProgramClip;
+  formerIndex: number;
+  previousClipId: string | null;
+  nextClipId: string | null;
+  formerProgramStart: number;
+  formerProgramEnd: number;
+  deletedAt: string;
+  editorialState: Pick<VideoProject, "overlays" | "videoOverlays" | "textOverlays">;
 };
 
 export type ProgramClip = {
@@ -226,6 +248,21 @@ export type VideoOverlay = {
   createdAt: string;
 };
 
+export type TextOverlay = {
+  id: string;
+  kind: "text";
+  role: "title" | "caption";
+  text: string;
+  target: { type: "selected-cut"; start: number; end: number } | { type: "program-clip"; clipId: string; sourceId: string; sourceStart: number; sourceEnd: number };
+  layout: { anchor: "top" | "center" | "bottom"; x: number; y: number; maxWidth: number; safeZone: boolean };
+  style: { fontFamily: "system-sans"; fontSize: number; fontWeight: 400 | 600 | 700; color: string; backgroundColor: string | null; strokeColor: string | null; strokeWidth: number; shadow: boolean; align: "left" | "center" | "right" };
+  layer: number;
+  opacity: number;
+  enabled: boolean;
+  provenance: { sourceId: string | null; attribution: string | null };
+  createdAt: string;
+};
+
 export type CutoutProcessing = {
   provider: "rembg-u2net-human";
   providerVersion: "1.0.0";
@@ -234,6 +271,10 @@ export type CutoutProcessing = {
   renderPath: string | null;
   recipePath: string;
   error: string | null;
+  jobId?: string | null;
+  phase?: "queued" | "extracting" | "segmenting" | "encoding-preview" | "encoding-render" | "finalizing" | "ready" | "failed";
+  progress?: number;
+  statusPath?: string | null;
 };
 
 export type PitchAnalysisReference = {
@@ -272,8 +313,8 @@ export type ExportReceipt = {
 };
 
 export type ExportCadence = { averageFps: number; reportedFps: number; frameCount: number };
-export type ExportQualityProfile = { encoder: "libx264"; preset: "slow"; crf: 14; profile: "high"; level: "4.2"; pixelFormat: "yuv420p"; color: "bt709"; fpsMode: "cfr-60"; audio: "aac-lc-48k-256k" };
-export type ExportPreset = "original-format" | "tiktok-60";
+export type ExportQualityProfile = { encoder: "libx264" | "h264_videotoolbox"; preset: "slow" | "veryfast" | "hardware"; crf: 14 | 18 | null; profile: "high"; level: "4.2"; pixelFormat: "yuv420p"; color: "bt709"; fpsMode: "cfr-60"; audio: "aac-lc-48k-256k" };
+export type ExportPreset = "original-format" | "tiktok-60" | "tiktok-software";
 export type ExportStrategy = "stream-copy" | "partial-transcode" | "full-transcode";
 
 export type AssetLibrary = {

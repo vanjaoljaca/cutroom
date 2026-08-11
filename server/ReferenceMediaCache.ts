@@ -10,6 +10,19 @@ export async function addRemoteReference(input: AddRemoteReferenceInput): Promis
   return source;
 }
 
+export async function attachCachedRemoteReference(input: AttachCachedReferenceInput): Promise<VideoMediaSource> {
+  log("reference_media_cache_attach_started", { projectId: input.projectId, url: input.url });
+  if (!input.label.trim()) throw new Error("Reference media label is required.");
+  await assertRuntimeStorageAvailable();
+  const downloaded = await cacheExistingMedia(input.path, input.url);
+  const transcript = input.transcriptPath ? await cacheTranscript(input.transcriptPath) : null;
+  const project = await readStoredProject(input.projectId);
+  const source = remoteSource(input, downloaded, transcript);
+  await writeStoredProject({ ...project, mediaLibrary: { ...project.mediaLibrary, sources: replaceSource(project.mediaLibrary.sources, source) } });
+  log("reference_media_cache_attached", { projectId: input.projectId, sourceId: source.id, cachePath: source.cache?.relativePath || "", wordCount: transcript?.wordCount || 0 });
+  return source;
+}
+
 export async function regenerateRemoteReference(projectId: string, sourceId: string): Promise<VideoMediaSource> {
   log("reference_media_regeneration_started", { projectId, sourceId });
   const project = await readStoredProject(projectId);
@@ -85,9 +98,39 @@ async function probeVideo(path: string): Promise<VideoMediaMetadata> {
   return { duration: Number(probe.format.duration), width: video.width, height: video.height, averageFps: parseRate(video.avg_frame_rate), videoCodec: video.codec_name, audioCodec: audio?.codec_name || null, container: probe.format.format_name };
 }
 
-function remoteSource(input: AddRemoteReferenceInput, downloaded: DownloadedMedia): VideoMediaSource {
-  return { id: remoteMediaId(input.url), kind: "video", role: "reference", label: input.label.trim(), rawMediaId: null, origin: { type: "remote", url: input.url }, cache: downloaded.cache, metadata: downloaded.metadata, createdAt: new Date().toISOString() };
+function remoteSource(input: AddRemoteReferenceInput, downloaded: DownloadedMedia, transcript: MediaTranscriptReference | null = null): VideoMediaSource {
+  return { id: remoteMediaId(input.url), kind: "video", role: "reference", label: input.label.trim(), rawMediaId: null, origin: { type: "remote", url: input.url }, cache: downloaded.cache, transcript, metadata: downloaded.metadata, createdAt: new Date().toISOString() };
 }
+
+async function cacheExistingMedia(path: string, url: string): Promise<DownloadedMedia> {
+  const safePath = runtimePath(path);
+  const { sha256, bytes } = await digestFile(safePath);
+  const metadata = await probeVideo(safePath);
+  const relativePath = `cache/media/${sha256}.${mediaExtension(url, mediaContentType(safePath))}`;
+  const finalPath = join(runtimeRoot, relativePath);
+  await mkdir(join(runtimeRoot, "cache", "media"), { recursive: true });
+  if (!(await exists(finalPath))) await copyFile(safePath, finalPath);
+  return { cache: { relativePath, sha256, bytes, cachedAt: new Date().toISOString() }, metadata };
+}
+
+async function cacheTranscript(path: string): Promise<MediaTranscriptReference> {
+  const safePath = runtimePath(path);
+  const body = await readFile(safePath, "utf8");
+  const parsed = JSON.parse(body) as WhisperTranscript;
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  const artifactPath = `cache/transcripts/${sha256}.json`;
+  await mkdir(join(runtimeRoot, "cache", "transcripts"), { recursive: true });
+  if (!(await exists(join(runtimeRoot, artifactPath)))) await copyFile(safePath, join(runtimeRoot, artifactPath));
+  return { version: 1, artifactPath, language: parsed.language || "unknown", wordCount: parsed.segments.flatMap((segment) => segment.words || []).length, generatedAt: new Date().toISOString() };
+}
+
+function runtimePath(path: string) {
+  const resolved = resolve(path);
+  if (resolved !== runtimeRoot && !resolved.startsWith(`${runtimeRoot}${sep}`)) throw new Error(`Reference cache must be under ${runtimeRoot}.`);
+  return resolved;
+}
+
+function mediaContentType(path: string) { return extname(path).toLowerCase() === ".mov" ? "video/quicktime" : "video/mp4"; }
 
 function replaceSource(sources: VideoMediaSource[], source: VideoMediaSource) {
   const retained = sources.filter((existing) => existing.id !== source.id);
@@ -118,19 +161,21 @@ function log(event: string, details: Record<string, unknown>) {
 }
 
 type AddRemoteReferenceInput = { projectId: string; url: string; label: string };
+type AttachCachedReferenceInput = AddRemoteReferenceInput & { path: string; transcriptPath?: string };
 type DownloadedMedia = { cache: RemoteMediaCache; metadata: VideoMediaMetadata };
+type WhisperTranscript = { language?: string; segments: Array<{ words?: Array<{ word: string; start: number; end: number; probability?: number }> }> };
 type ProbeStream = { codec_type: string; codec_name: string; width?: number; height?: number; avg_frame_rate?: string };
 type ProbeResult = { streams: ProbeStream[]; format: { duration: string; format_name: string } };
 
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { access, mkdir, rename, stat, unlink } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { access, copyFile, mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import { extname, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
-import type { RemoteMediaCache, VideoMediaMetadata, VideoMediaSource } from "../src/analysis-model";
+import type { MediaTranscriptReference, RemoteMediaCache, VideoMediaMetadata, VideoMediaSource } from "../src/analysis-model";
 import { assertRuntimeStorageAvailable, runtimeRoot } from "./RuntimeStorage";
 import { readStoredProject, writeStoredProject } from "./project-store";
 import { resolveRawMediaPath } from "./RawMediaLibrary";

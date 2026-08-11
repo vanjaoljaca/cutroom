@@ -9,28 +9,39 @@ export async function renderProjectVideo(projectId: string, options: RenderOptio
 }
 
 async function renderTikTok(project: VideoProject, cuts: SourceRange[], options: RenderOptions): Promise<ExportReceipt> {
+  const preset = options.preset === "tiktok-software" ? "tiktok-software" : "tiktok-60";
   const snapshotHash = projectSnapshotHash(project);
   const jobId = options.jobId || `export-${Date.now()}-${randomUUID().slice(0, 8)}`;
-  const paths = await prepareExportPaths(project, "tiktok-60", "mp4");
+  const paths = await prepareExportPaths(project, preset, "mp4");
   const source = await probeMedia(primarySourcePath(project));
-  const command = buildExportCommand(project, cuts, source, paths.partial);
-  log("export_started", { projectId: project.id, jobId, preset: "tiktok-60", duration: cutDuration(cuts), output: paths.output });
+  const profile = preset === "tiktok-software" ? qualityProfile : await hardwareEncodingProfile();
+  log("export_started", { projectId: project.id, jobId, preset, duration: cutDuration(cuts), output: paths.output });
   try {
-    await runFfmpeg(command, cutDuration(cuts), options);
-    const receipt = await finalizeTikTokExport(project, cuts, source, paths, jobId, snapshotHash);
-    log("export_completed", { projectId: project.id, jobId, preset: "tiktok-60", output: receipt.outputPath, bytes: receipt.bytes });
+    const receipt = await renderTikTokAttempt(project, cuts, source, paths, jobId, snapshotHash, preset, profile, options);
+    log("export_completed", { projectId: project.id, jobId, preset, output: receipt.outputPath, bytes: receipt.bytes });
     return receipt;
   } catch (error) {
     await unlink(paths.partial).catch(() => undefined);
     await writeFailureManifest(project.id, paths.manifest, jobId, snapshotHash, error);
-    log("export_failed", { projectId: project.id, jobId, preset: "tiktok-60", error: message(error) });
+    log("export_failed", { projectId: project.id, jobId, preset, error: message(error) });
     throw error;
+  }
+}
+
+async function renderTikTokAttempt(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: "tiktok-60" | "tiktok-software", profile: ExportQualityProfile, options: RenderOptions) {
+  try { await runFfmpeg(buildExportCommand(project, cuts, source, paths.partial, profile), cutDuration(cuts), options); return finalizeTikTokExport(project, cuts, source, paths, jobId, snapshotHash, preset, profile); }
+  catch (error) {
+    if (profile.encoder !== "h264_videotoolbox" || options.signal?.aborted) throw error;
+    await unlink(paths.partial).catch(() => undefined);
+    log("hardware_export_fallback", { projectId: project.id, jobId, error: message(error), fallback: "libx264-slow" });
+    await runFfmpeg(buildExportCommand(project, cuts, source, paths.partial, qualityProfile), cutDuration(cuts), options);
+    return finalizeTikTokExport(project, cuts, source, paths, jobId, snapshotHash, preset, qualityProfile);
   }
 }
 
 export function projectSnapshotHash(project: VideoProject): string {
   const bundles = project.assetLibrary.bundles.map(({ id, selectedAssetId }) => ({ id, selectedAssetId }));
-  return createHash("sha256").update(JSON.stringify({ mediaLibrary: project.mediaLibrary, programTimeline: project.programTimeline, overlays: project.overlays, cutoutOverlays: project.cutoutOverlays, videoOverlays: project.videoOverlays, bundles })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ mediaLibrary: project.mediaLibrary, programTimeline: project.programTimeline, overlays: project.overlays, cutoutOverlays: project.cutoutOverlays, videoOverlays: project.videoOverlays, textOverlays: project.textOverlays, bundles })).digest("hex");
 }
 
 async function prepareExportPaths(project: VideoProject, preset: ExportPreset, extension: "mov" | "mp4"): Promise<ExportPaths> {
@@ -47,7 +58,7 @@ async function renderOriginalFormat(project: VideoProject, cuts: SourceRange[], 
   const sourcePath = primarySourcePath(project);
   const source = await probeMedia(sourcePath);
   const keyframes = await probeKeyframes(sourcePath);
-  const overlays = editorialOverlays(project, cuts).map((item) => ({ id: item.id, start: item.start, end: item.end }));
+  const overlays = [...editorialOverlays(project, cuts).map((item) => ({ id: item.id, start: item.start, end: item.end })), ...textOverlayProgramIntervals(project, cuts).map((item) => ({ id: item.overlay.id, start: item.start, end: item.end }))];
   const plan = planSourcePreservingExport({ projectId: project.id, source: sourcePlanMedia(sourcePath, source), cuts, overlays, keyframes });
   const snapshotHash = projectSnapshotHash(project);
   const jobId = options.jobId || `export-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -86,33 +97,69 @@ async function probeKeyframes(path: string): Promise<number[]> {
   return stdout.split(/\s+/).map((value) => Number.parseFloat(value)).filter(Number.isFinite);
 }
 
-function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: string): string[] {
+function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: string, profile: ExportQualityProfile): string[] {
   const overlays = editorialOverlays(project, cuts);
   assertCutoutsReady(overlays);
   const args = ["-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-y"];
-  cuts.forEach((cut) => args.push("-i", programSourcePath(project, cut)));
+  const inputPaths = [...new Set(cuts.map((cut) => programSourcePath(project, cut)))];
+  inputPaths.forEach((path) => args.push("-i", path));
+  const inputIndexes = cuts.map((cut) => inputPaths.indexOf(programSourcePath(project, cut)));
   overlays.forEach((item) => addEditorialInput(args, project, item, source.averageFrameRate));
-  const graph = filterGraph(project, cuts, overlays, source.width, source.height);
-  return [...args, "-filter_complex", graph, "-map", "[exportv]", "-map", "[exporta]", ...videoEncodingArgs(), "-c:a", "aac", "-profile:a", "aac_low", "-ar", "48000", "-ac", "2", "-b:a", "256k", "-movflags", "+faststart", output];
+  const graph = filterGraph(project, cuts, inputIndexes, overlays, inputPaths.length, source.width, source.height);
+  return [...args, "-filter_complex", graph, "-map", "[exportv]", "-map", "[exporta]", ...videoEncodingArgs(profile), "-c:a", "aac", "-profile:a", "aac_low", "-ar", "48000", "-ac", "2", "-b:a", "256k", "-movflags", "+faststart", output];
 }
 
-export function videoEncodingArgs(): string[] {
-  return ["-c:v", "libx264", "-preset", "slow", "-crf", "14", "-profile:v", "high", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-r", "60", "-fps_mode:v", "cfr", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv", "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709"];
+export function videoEncodingArgs(profile: ExportQualityProfile = qualityProfile): string[] {
+  const codec = profile.encoder === "h264_videotoolbox" ? ["-c:v", profile.encoder, "-b:v", "24M", "-maxrate", "32M", "-bufsize", "64M", "-allow_sw", "1"] : ["-c:v", profile.encoder, "-preset", profile.preset, "-crf", String(profile.crf)];
+  return [...codec, "-profile:v", "high", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-r", "60", "-fps_mode:v", "cfr", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"];
 }
 
-function filterGraph(project: VideoProject, cuts: SourceRange[], overlays: EditorialOverlayInterval[], width: number, height: number): string {
+async function hardwareEncodingProfile(): Promise<ExportQualityProfile> {
+  try { const { stdout } = await execFile(ffmpegPath, ["-hide_banner", "-encoders"], { maxBuffer: 2_000_000, timeout: 15_000 }); if (stdout.includes("h264_videotoolbox")) return hardwareReviewProfile; }
+  catch (error) { log("hardware_encoder_probe_failed", { error: message(error) }); }
+  log("hardware_encoder_unavailable", { fallback: "libx264-slow-crf14" });
+  return qualityProfile;
+}
+
+function filterGraph(project: VideoProject, cuts: SourceRange[], inputIndexes: number[], overlays: EditorialOverlayInterval[], overlayInputStart: number, width: number, height: number): string {
+  const fanout = sourceFanoutFilters(project, cuts, inputIndexes);
   const trims = cuts.flatMap((cut, index) => clipFilters(project, cut, index, width, height));
   const inputs = cuts.map((_, index) => `[v${index}][a${index}]`).join("");
   const concat = `${inputs}concat=n=${cuts.length}:v=1:a=1[cutv][exporta]`;
-  const overlayFilters = overlays.flatMap((interval, index) => editorialOverlayFilter(project, interval, index, cuts.length, width, height));
-  const final = overlays.length ? `[composite${overlays.length - 1}]setsar=1[exportv]` : "[cutv]setsar=1[exportv]";
-  return [...trims, concat, ...overlayFilters, final].join(";");
+  const overlayFilters = overlays.flatMap((interval, index) => editorialOverlayFilter(project, interval, index, overlayInputStart, width, height));
+  const textIntervals = textOverlayProgramIntervals(project, cuts);
+  const visualBase = overlays.length ? `composite${overlays.length - 1}` : "cutv";
+  const textFilters = textIntervals.map((interval, index) => textOverlayFilter(interval, index, index ? `text${index - 1}` : visualBase, width, height));
+  const finalBase = textIntervals.length ? `text${textIntervals.length - 1}` : visualBase;
+  return [...fanout, ...trims, concat, ...overlayFilters, ...textFilters, `[${finalBase}]setsar=1[exportv]`].join(";");
 }
+
+function sourceFanoutFilters(project: VideoProject, cuts: SourceRange[], inputIndexes: number[]) {
+  return [...new Set(inputIndexes)].flatMap((inputIndex) => {
+    const clipIndexes = inputIndexes.map((value, index) => value === inputIndex ? index : -1).filter((index) => index >= 0);
+    const videoLabels = clipIndexes.map((index) => `[srcv${index}]`).join("");
+    const filters = [`[${inputIndex}:v:0]${clipIndexes.length > 1 ? `split=${clipIndexes.length}` : "null"}${videoLabels}`];
+    const audioClipIndexes = clipIndexes.filter((index) => sourceHasAudio(project, cuts[index]));
+    if (audioClipIndexes.length) filters.push(`[${inputIndex}:a:0]${audioClipIndexes.length > 1 ? `asplit=${audioClipIndexes.length}` : "anull"}${audioClipIndexes.map((index) => `[srca${index}]`).join("")}`);
+    return filters;
+  });
+}
+
+export function textOverlayFilter(interval: TextOverlayProgramInterval, index: number, input: string, width: number, height: number): string {
+  const overlay = interval.overlay;
+  const wrapped = wrapTextForCanvas(overlay.text, overlay.style.fontSize, overlay.layout.maxWidth, width);
+  const x = overlay.style.align === "left" ? `${overlay.layout.x}*w` : overlay.style.align === "right" ? `${overlay.layout.x}*w-text_w` : `${overlay.layout.x}*w-text_w/2`;
+  const y = overlay.layout.anchor === "bottom" ? `${overlay.layout.y}*h-text_h` : overlay.layout.anchor === "center" ? `${overlay.layout.y}*h-text_h/2` : `${overlay.layout.y}*h`;
+  const decoration = `${overlay.style.strokeColor ? `:borderw=${overlay.style.strokeWidth}:bordercolor=${overlay.style.strokeColor}` : ""}${overlay.style.backgroundColor ? `:box=1:boxcolor=${overlay.style.backgroundColor}@0.78:boxborderw=${Math.round(overlay.style.fontSize * 0.28)}` : ""}${overlay.style.shadow ? ":shadowcolor=#000000@0.8:shadowx=2:shadowy=3" : ""}`;
+  return `[${input}]drawtext=fontfile='${textFontPath}':text='${escapeDrawtext(wrapped.text)}':fontsize=${overlay.style.fontSize}:fontcolor=${overlay.style.color}@${overlay.opacity}:x=${x}:y=${y}:enable='between(t,${interval.start},${interval.end})'${decoration}[text${index}]`;
+}
+
+function escapeDrawtext(text: string) { return text.replaceAll("\\", "\\\\").replaceAll("'", "\\'").replaceAll(":", "\\:").replaceAll("%", "\\%"); }
 
 function clipFilters(project: VideoProject, cut: SourceRange, index: number, width: number, height: number): string[] {
   const duration = cut.end - cut.start;
-  const video = `[${index}:v:0]trim=start=${cut.start}:end=${cut.end},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[v${index}]`;
-  const audio = sourceHasAudio(project, cut) ? `[${index}:a:0]atrim=start=${cut.start}:end=${cut.end},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${index}]` : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[a${index}]`;
+  const video = `[srcv${index}]trim=start=${cut.start}:end=${cut.end},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[v${index}]`;
+  const audio = sourceHasAudio(project, cut) ? `[srca${index}]atrim=start=${cut.start}:end=${cut.end},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${index}]` : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[a${index}]`;
   return [video, audio];
 }
 
@@ -191,8 +238,10 @@ async function runFfmpeg(args: string[], duration: number, options: RenderOption
   await new Promise<void>((resolve, reject) => {
     const child = spawn(ffmpegPath, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
+    let stdout = "";
+    const startedAt = Date.now();
     child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-8000); });
-    child.stdout.on("data", (chunk) => parseProgress(String(chunk), duration, options.onProgress));
+    child.stdout.on("data", (chunk) => { stdout += String(chunk); const lines = stdout.split("\n"); stdout = lines.pop() || ""; parseProgress(lines.join("\n"), duration, startedAt, options.onProgress); });
     const abort = () => child.kill("SIGTERM");
     options.signal?.addEventListener("abort", abort, { once: true });
     child.on("error", reject);
@@ -204,16 +253,21 @@ async function runFfmpeg(args: string[], duration: number, options: RenderOption
   });
 }
 
-function parseProgress(chunk: string, duration: number, onProgress?: (progress: number) => void) {
+function parseProgress(chunk: string, duration: number, startedAt: number, onProgress?: (progress: ExportProgress) => void) {
   const matches = [...chunk.matchAll(/out_time_us=(\d+)/g)];
   const microseconds = Number(matches.at(-1)?.[1] || 0);
-  if (microseconds > 0) onProgress?.(Math.min(0.99, microseconds / 1_000_000 / duration));
+  if (microseconds <= 0) return;
+  const processedSeconds = microseconds / 1_000_000;
+  const progress = Math.min(0.99, processedSeconds / duration);
+  const elapsedSeconds = (Date.now() - startedAt) / 1000;
+  const etaSeconds = progress > 0.005 ? Math.max(0, elapsedSeconds / progress - elapsedSeconds) : null;
+  onProgress?.({ progress, processedSeconds, totalSeconds: duration, etaSeconds });
 }
 
-async function finalizeTikTokExport(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string): Promise<ExportReceipt> {
+async function finalizeTikTokExport(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: "tiktok-60" | "tiktok-software", profile: ExportQualityProfile): Promise<ExportReceipt> {
   const probe = await probeMedia(paths.partial);
   validateTikTokMedia(probe, source, cutDuration(cuts), (await stat(paths.partial)).size);
-  return finishExport(project, cuts, source, probe, paths, jobId, snapshotHash, "tiktok-60", "full-transcode", qualityProfile, null);
+  return finishExport(project, cuts, source, probe, paths, jobId, snapshotHash, preset, "full-transcode", profile, null);
 }
 
 async function finishExport(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: ExportPreset, strategy: ExportStrategy, profile: ExportQualityProfile | null, plan: SourcePreservingPlan | null): Promise<ExportReceipt> {
@@ -321,7 +375,8 @@ function even(value: number): number { return Math.max(2, Math.round(value / 2) 
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function log(event: string, details: Record<string, unknown>) { console.info(JSON.stringify({ scope: "cutroom-export", event, ...details })); }
 
-export type RenderOptions = { jobId?: string; preset?: ExportPreset; signal?: AbortSignal; onProgress?: (progress: number) => void };
+export type ExportProgress = { progress: number; processedSeconds: number; totalSeconds: number; etaSeconds: number | null };
+export type RenderOptions = { jobId?: string; preset?: ExportPreset; signal?: AbortSignal; onProgress?: (progress: ExportProgress) => void };
 type ExportPaths = { output: string; partial: string; manifest: string; exportVersion: number };
 type MediaProbe = { width: number; height: number; videoCodec: string; videoTag: string; videoProfile: string; videoLevel: number; audioCodec: string; audioSampleRate: number; audioChannels: number; duration: number; container: string; rotation: number; averageFrameRate: number; reportedFrameRate: number; frameCount: number; bitRate: number; pixelFormat: string; colorSpace: string; colorTransfer: string; colorPrimaries: string; colorRange: string; sampleAspectRatio: string };
 type ProbeJson = { streams: Array<{ codec_type: string; codec_name: string; codec_tag_string?: string; profile?: string; level?: number; sample_rate?: string; channels?: number; width?: number; height?: number; avg_frame_rate?: string; r_frame_rate?: string; nb_frames?: string; bit_rate?: string; pix_fmt?: string; color_space?: string; color_transfer?: string; color_primaries?: string; color_range?: string; sample_aspect_ratio?: string; side_data_list?: Array<{ side_data_type: string; rotation?: number }> }>; format: { duration: string; format_name?: string } };
@@ -344,12 +399,16 @@ import { exportFileStem } from "./ExportNaming";
 import { mediaSourcePath } from "./ReferenceMediaCache";
 import { cutoutProgramIntervals, type CutoutProgramInterval } from "../src/CutoutOverlayModel";
 import { videoOverlayProgramIntervals, type VideoOverlayProgramInterval } from "../src/VideoOverlayModel";
+import { textOverlayProgramIntervals, type TextOverlayProgramInterval } from "../src/TextOverlayModel";
+import { wrapTextForCanvas } from "../src/TextLayoutModel";
 import { assertRuntimeStorageAvailable } from "./RuntimeStorage";
 
 const execFile = promisify(execFileCallback);
 const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
 const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
+const textFontPath = "/System/Library/Fonts/SFNS.ttf";
 const qualityProfile: ExportQualityProfile = { encoder: "libx264", preset: "slow", crf: 14, profile: "high", level: "4.2", pixelFormat: "yuv420p", color: "bt709", fpsMode: "cfr-60", audio: "aac-lc-48k-256k" };
+export const hardwareReviewProfile: ExportQualityProfile = { ...qualityProfile, encoder: "h264_videotoolbox", preset: "hardware", crf: null };
 
 export class SourcePreservingExportBlockedError extends Error {
   constructor(reason: string, manifestPath: string) { super(`${reason} Plan: ${manifestPath}`); }

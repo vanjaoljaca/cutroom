@@ -35,3 +35,4 @@ function waitForEvent(target: HTMLVideoElement, event: string): Promise<void> {
     target.addEventListener("error", () => reject(target.error), { once: true });
   });
 }
+

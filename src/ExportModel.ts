@@ -6,6 +6,9 @@ export type ExportJobStatus = {
   preset: ExportPreset;
   state: ExportJobState;
   progress: number;
+  processedSeconds: number;
+  totalSeconds: number;
+  etaSeconds: number | null;
   message: string;
   receipt: ExportReceipt | null;
   error: string | null;

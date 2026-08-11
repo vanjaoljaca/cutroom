@@ -8,3 +8,4 @@ export function logError(event: string, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   console.error(JSON.stringify({ at: new Date().toISOString(), event, message }));
 }
+
