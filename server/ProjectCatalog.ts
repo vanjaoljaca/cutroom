@@ -1,5 +1,6 @@
 export async function listProjects(): Promise<ProjectSummary[]> {
   log("project_catalog_listed", {});
+  await assertRuntimeStorageAvailable();
   await mkdir(projectsRoot, { recursive: true });
   const entries = await readdir(projectsRoot, { withFileTypes: true });
   const projects = await Promise.all(entries.filter(isProjectDirectory).map((entry) => summarizeProject(entry.name)));
@@ -29,7 +30,13 @@ export async function trashProject(input: TrashProjectInput): Promise<ProjectTra
 async function summarizeProject(id: string): Promise<ProjectSummary> {
   const project = await readStoredProject(id);
   const updatedAt = (await stat(join(projectDirectory(id), "project.json"))).mtime.toISOString();
-  return { id, title: project.title, sourceName: project.sourceName, createdAt: project.createdAt, updatedAt, revision: project.revision, sceneCount: project.scenes.length, exportCount: project.exportHistory.length };
+  return { id, title: project.title, sourceName: project.sourceName, createdAt: project.createdAt, updatedAt, revision: project.revision, sceneCount: project.scenes.length, exportCount: project.exportHistory.length, provenance: project.mediaLibrary.sources.map((source) => mediaProvenance(project, source)) };
+}
+
+function mediaProvenance(project: VideoProject, source: VideoMediaSource): ProjectMediaProvenance {
+  const origin = source.origin.type === "local" ? source.origin.path : source.origin.url;
+  const provenanceId = source.rawMediaId || `origin.${createHash("sha256").update(origin).digest("hex").slice(0, 16)}`;
+  return { provenanceId, rawMediaId: source.rawMediaId, sourceId: source.id, label: source.label, role: source.role, primary: source.id === project.mediaLibrary.primarySourceId };
 }
 
 async function trashTarget(id: string, trashedAt: string) {
@@ -54,10 +61,11 @@ type RenameProjectInput = { projectId: string; revision: number; title: string }
 type TrashProjectInput = { projectId: string; revision: number };
 
 import type { Dirent } from "node:fs";
+import { createHash } from "node:crypto";
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { ProjectSummary, ProjectTrashReceipt, VideoProject } from "../src/analysis-model";
+import type { ProjectMediaProvenance, ProjectSummary, ProjectTrashReceipt, VideoMediaSource, VideoProject } from "../src/analysis-model";
 import { normalizeProjectTitle } from "../src/ProjectTitle";
-import { projectsRoot, runtimeRoot } from "./media-analysis";
+import { assertRuntimeStorageAvailable, projectsRoot, runtimeRoot } from "./RuntimeStorage";
 import { ProjectRevisionConflict, projectDirectory, readStoredProject, writeStoredProject } from "./project-store";
 import { recordingPlanForProject } from "../src/RecordingPlanModel";

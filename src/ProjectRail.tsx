@@ -18,7 +18,7 @@ export function ProjectRail({ open, currentProjectId, onClose, onProjectRenamed,
     setBusyId(project.id);
     try {
       const renamed = await renameProject(project, draft);
-      setProjects((current) => current.map((item) => item.id === renamed.id ? summaryFromProject(renamed) : item));
+      await refreshProjects(setProjects, setError);
       setEditingId(null);
       onProjectRenamed(renamed);
     } catch (caught) { setError(message(caught)); }
@@ -50,7 +50,7 @@ export function ProjectRail({ open, currentProjectId, onClose, onProjectRenamed,
     </section>)}</div>
     {!projects.length && !error && <p className="project-list-empty">No projects yet.</p>}
     {error && <p className="project-rail-error" role="alert">{error}</p>}
-    <footer><strong>New project</strong><span>Give a source video to a Codex task. It creates and opens the Cutroom project here.</span></footer>
+    <footer><strong>New work</strong><span>Give recordings to a Codex task. One recording can feed several projects; one project can use several recordings.</span></footer>
   </aside></>;
 }
 
@@ -72,10 +72,6 @@ async function projectRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Project request failed.");
   return result as T;
-}
-
-function summaryFromProject(project: VideoProject): ProjectSummary {
-  return { id: project.id, title: project.title, sourceName: project.sourceName, createdAt: project.createdAt, updatedAt: new Date().toISOString(), revision: project.revision, sceneCount: project.scenes.length, exportCount: project.exportHistory.length };
 }
 
 function message(error: unknown) { return error instanceof Error ? error.message : String(error); }

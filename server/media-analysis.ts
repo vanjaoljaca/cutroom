@@ -10,7 +10,8 @@ export async function analyzeSource(sourcePath: string): Promise<AnalysisResult>
 }
 
 async function assertRuntimeReady() {
-  await Promise.all([access(cliPath), access(modelPath), access(runtimeRoot)]);
+  await assertRuntimeStorageAvailable();
+  await Promise.all([access(cliPath), access(modelPath)]);
   const storage = await statfs(runtimeRoot);
   if (storage.bavail * storage.bsize < 120_000_000) throw new Error("Not enough free USB space for an analysis job.");
 }
@@ -45,22 +46,22 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: "cutroom-analysis", event, ...details }));
 }
 
-export const runtimeRoot = process.env.CUTROOM_RUNTIME_ROOT || join(homedir(), "Movies", "Cutroom");
-export const projectsRoot = join(runtimeRoot, "projects");
 const cliPath = process.env.CUTROOM_TRANSCRIBER || join(runtimeRoot, "runtime/FluidAudio-build/arm64-apple-macosx/release/fluidaudiocli");
-const modelPath = process.env.CUTROOM_TRANSCRIPTION_MODEL || join(homedir(), "Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2-coreml");
-const ffmpegPath = process.env.CUTROOM_FFMPEG || "ffmpeg";
-const ffprobePath = process.env.CUTROOM_FFPROBE || "ffprobe";
+const modelPath = transcriptionModelPath;
+const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
+const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
 
 type FluidTranscript = { text: string; wordTimings: import("../src/analysis-model").WordTiming[] };
 
 import { randomUUID } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
 import { access, mkdir, readFile, statfs } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AnalysisResult } from "../src/analysis-model";
 import { interpretDirectorTrack } from "./director-analysis";
+import { assertRuntimeStorageAvailable, projectsRoot, runtimeRoot, transcriptionModelPath } from "./RuntimeStorage";
+
+export { projectsRoot, runtimeRoot } from "./RuntimeStorage";
 
 const execFile = promisify(execFileCallback);

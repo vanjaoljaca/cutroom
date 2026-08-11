@@ -112,14 +112,14 @@ button:focus-visible,
 .viewer { position: relative; }
 .viewer .video-decoder { width: 100%; height: 100%; position: absolute; inset: 0; display: block; object-fit: contain; opacity: 0; pointer-events: none; }
 .video-paint-surface { width: 100%; height: 100%; display: block; }
-.overlay-stage { position: absolute; z-index: 1; inset: 0; overflow: hidden; pointer-events: none; }
-.image-overlay-item, .cutout-overlay-item { position: absolute; pointer-events: auto; touch-action: none; }
+.overlay-stage { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.image-overlay-item, .cutout-overlay-item, .video-overlay-item { position: absolute; pointer-events: auto; touch-action: none; }
 .overlay-move-surface { width: 100%; height: 100%; display: block; padding: 0; border: 0; background: transparent; cursor: move; touch-action: none; }
 .overlay-move-surface > img { width: 100%; height: auto; display: block; filter: drop-shadow(0 3px 8px rgb(0 0 0 / 35%)); pointer-events: none; }
-.cutout-overlay-item video { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; }
-.image-overlay-item.selected, .cutout-overlay-item.selected { outline: 2px solid #d98cff; outline-offset: 2px; }
+.cutout-overlay-item video, .video-overlay-item video { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; }
+.image-overlay-item.selected, .cutout-overlay-item.selected, .video-overlay-item.selected { outline: 2px solid #d98cff; outline-offset: 2px; }
 .overlay-resize-handle { width: 16px; height: 16px; position: absolute; right: -8px; bottom: -8px; display: none; padding: 0; border: 2px solid #131513; border-radius: 50%; background: #d98cff; cursor: nwse-resize; touch-action: none; }
-.image-overlay-item.selected .overlay-resize-handle, .cutout-overlay-item.selected .overlay-resize-handle { display: block; }
+.image-overlay-item.selected .overlay-resize-handle, .cutout-overlay-item.selected .overlay-resize-handle, .video-overlay-item.selected .overlay-resize-handle { display: block; }
 .viewer:fullscreen { display: grid; place-items: center; background: #000; border: 0; }
 .viewer:fullscreen .video-paint-surface { width: auto; max-width: 100%; }
 
@@ -184,6 +184,7 @@ button:focus-visible,
 .program-track-label::before { background: #f0c84b; }
 .image-track-label::before { background: #d98cff; }
 .cutout-track-label::before { background: #68d8b5; }
+.video-track-label::before { background: #67a6ff; }
 .timeline-track-content { min-width: 0; }
 .timeline-scale-label::before { display: none; }
 .save-indicator { color: #8d928a; font-size: 11px; text-align: right; }
@@ -435,6 +436,12 @@ button:focus-visible,
 .cutout-clip.failed { color: #2b1111; background: #ef8f85; }
 .cutout-clip.selected { box-shadow: inset 0 0 0 1px #dffdf4, 0 0 0 1px #68d8b5; }
 .cutout-move-handle { width: 100%; height: 100%; overflow: hidden; padding: 0 10px; border: 0; color: inherit; background: transparent; cursor: grab; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.video-overlay-track { height: 28px; position: relative; border-bottom: 1px solid #292c29; background: #0f110f; }
+.video-overlay-clip { height: 22px; position: absolute; top: 3px; min-width: 18px; color: #09111b; background: #67a6ff; border-radius: 2px; touch-action: none; }
+.video-overlay-clip.selected { box-shadow: inset 0 0 0 1px #e5f0ff, 0 0 0 1px #67a6ff; }
+.video-overlay-move-handle { width: 100%; height: 100%; overflow: hidden; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; color: inherit; background: transparent; cursor: grab; font-size: 9px; white-space: nowrap; }
+.video-overlay-move-handle b { overflow: hidden; text-overflow: ellipsis; }
+.video-overlay-move-handle i { margin-left: auto; font-style: normal; opacity: 0.65; }
 
 .empty-state {
   min-height: calc(100vh - 58px);

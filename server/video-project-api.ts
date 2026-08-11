@@ -19,6 +19,10 @@ export function handleVideoProjectRequest(request: IncomingMessage, response: Se
 async function handleProjectRequest(route: ProjectRoute, request: IncomingMessage, response: ServerResponse) {
   try {
     if (route.action === "catalog" && request.method === "GET") return sendJson(response, 200, await listProjects());
+    if (route.action === "raw-media" && request.method === "GET") return sendJson(response, 200, await readRawMediaLibrary());
+    if (route.action === "raw-media" && request.method === "POST") return sendJson(response, 201, await ingestRawMedia((JSON.parse(await readBody(request)) as { path: string }).path));
+    if (route.action === "raw-media-attach" && request.method === "POST") return sendJson(response, 200, await attachRawMediaInput(route.id, request));
+    if (route.action === "raw-media-attach" && route.itemId && request.method === "DELETE") return sendJson(response, 200, await detachRawMedia(route.id, route.itemId));
     if (route.action === "media" && request.method === "GET") return serveMedia(route.id, request, response);
     if (route.action === "media-references" && request.method === "POST") return sendJson(response, 201, await addReferenceMedia(route.id, request));
     if (route.action === "media-source" && route.itemId && request.method === "GET") return serveMediaSource(route.id, route.itemId, request, response);
@@ -80,6 +84,12 @@ async function addReferenceMedia(projectId: string, request: IncomingMessage) {
   return addRemoteReference({ projectId, url: input.url, label: input.label });
 }
 
+async function attachRawMediaInput(projectId: string, request: IncomingMessage) {
+  const input = JSON.parse(await readBody(request)) as { rawMediaId?: string; sourceId?: string; role?: string; label?: string; primary?: boolean };
+  if (!input.rawMediaId || !input.role || !["instruction", "creator", "reference"].includes(input.role)) throw new Error("Raw media id and role are required.");
+  return attachRawMedia({ projectId, rawMediaId: input.rawMediaId, sourceId: input.sourceId, role: input.role as "instruction" | "creator" | "reference", label: input.label, primary: Boolean(input.primary) });
+}
+
 async function cutoutInput(request: IncomingMessage): Promise<CreateCutoutInput> {
   const input = JSON.parse(await readBody(request)) as CreateCutoutInput;
   if (!input.sourceId || !input.targetClipId || !input.label || !(input.sourceEnd > input.sourceStart)) throw new Error("Cutout source, target, label, and interval are required.");
@@ -134,6 +144,9 @@ async function serveVideoPath(path: string, request: IncomingMessage, response: 
 function parseRoute(rawUrl = "/"): ProjectRoute | null {
   const path = new URL(rawUrl, "http://cutroom.local").pathname;
   if (path === "/api/projects") return { id: "", action: "catalog", itemId: null };
+  if (path === "/api/raw-media") return { id: "", action: "raw-media", itemId: null };
+  const rawMedia = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/raw(?:\/(raw\.[a-f0-9]{16}))?$/);
+  if (rawMedia) return { id: rawMedia[1], action: "raw-media-attach", itemId: rawMedia[2] || null };
   const references = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/references$/);
   if (references) return { id: references[1], action: "media-references", itemId: null };
   const preview = path.match(/^\/api\/projects\/([a-z0-9-]+)\/cutouts\/(cutout\.[a-z0-9.-]+)\/preview$/);
@@ -192,7 +205,7 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: "cutroom-projects", event, ...details }));
 }
 
-type ProjectAction = "catalog" | "project" | "media" | "media-references" | "media-source" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "exports" | "export-job" | "export-file";
+type ProjectAction = "catalog" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "exports" | "export-job" | "export-file";
 type ProjectRoute = { id: string; action: ProjectAction; itemId: string | null };
 type ByteRange = { start: number; end: number };
 
@@ -211,3 +224,4 @@ import { addRemoteReference, mediaSourcePath, regenerateRemoteReference, removeR
 import { cancelExportJob, exportJobStatus, exportOverview, startExportJob } from "./VideoExportJobs";
 import { listProjects, renameProject, trashProject } from "./ProjectCatalog";
 import { cutoutJobStatus, startCutoutJob } from "./CutoutJobs";
+import { attachRawMedia, detachRawMedia, ingestRawMedia, readRawMediaLibrary } from "./RawMediaLibrary";

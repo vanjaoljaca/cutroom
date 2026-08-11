@@ -1,5 +1,6 @@
 export async function readStoredProject(id: string): Promise<VideoProject> {
   validateId(id);
+  await assertRuntimeStorageAvailable();
   return validateVideoProject(JSON.parse(await readFile(join(projectDirectory(id), "project.json"), "utf8")) as VideoProject);
 }
 
@@ -12,6 +13,7 @@ export function writeStoredProject(project: VideoProject): Promise<VideoProject>
 }
 
 async function writeNextRevision(project: VideoProject): Promise<VideoProject> {
+  await assertRuntimeStorageAvailable();
   const directory = projectDirectory(project.id);
   await mkdir(directory, { recursive: true });
   const currentRevision = await storedRevision(project.id);
@@ -52,7 +54,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { VideoProject } from "../src/analysis-model";
-import { projectsRoot } from "./media-analysis";
+import { assertRuntimeStorageAvailable, projectsRoot } from "./RuntimeStorage";
 import { validateVideoProject } from "./project-schema";
 
 const projectWrites = new Map<string, Promise<void>>();

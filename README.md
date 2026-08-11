@@ -30,12 +30,12 @@ Cutroom is early software. The project schema, media-analysis results, and expor
 npm install
 npm run check
 npm run build
-CUTROOM_RUNTIME_ROOT="$HOME/Movies/Cutroom" npm run service:start
+npm run service:start
 ```
 
 Open `http://127.0.0.1:4173`. A project route is `/project/<project-id>`.
 
-Cutroom does not bundle media or model weights. Project files, source caches, analysis artifacts, and exports live under `CUTROOM_RUNTIME_ROOT`; the default is `~/Movies/Cutroom`.
+Cutroom does not bundle media or model weights. Project files, raw recordings, source caches, analysis artifacts, models, and exports live under `CUTROOM_RUNTIME_ROOT`; the default is `/Volumes/VanjaOljacaX/Cutroom`. If that storage is unavailable, Cutroom fails clearly instead of falling back to Downloads, `/tmp`, the repository, or a home cache. Set `CUTROOM_RUNTIME_ROOT` explicitly only when developing against another deliberate storage root.
 
 ## Headless workflow
 

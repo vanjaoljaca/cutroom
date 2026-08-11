@@ -52,6 +52,7 @@ export type VideoProject = AnalysisResult & {
   assetLibrary: AssetLibrary;
   overlays: ImageOverlay[];
   cutoutOverlays: SubjectCutoutOverlay[];
+  videoOverlays: VideoOverlay[];
   pitchAnalysis: PitchAnalysisReference | null;
   exportHistory: ExportReceipt[];
 };
@@ -87,6 +88,16 @@ export type ProjectSummary = {
   revision: number;
   sceneCount: number;
   exportCount: number;
+  provenance: ProjectMediaProvenance[];
+};
+
+export type ProjectMediaProvenance = {
+  provenanceId: string;
+  rawMediaId?: string | null;
+  sourceId: string;
+  label: string;
+  role: VideoMediaSource["role"];
+  primary: boolean;
 };
 
 export type ProjectTrashReceipt = {
@@ -113,10 +124,38 @@ export type VideoMediaSource = {
   kind: "video";
   role: "instruction" | "creator" | "reference";
   label: string;
+  rawMediaId?: string | null;
   origin: MediaOrigin;
   cache: RemoteMediaCache | null;
   metadata: VideoMediaMetadata | null;
   createdAt: string;
+};
+
+export type RawMediaLibrary = { version: 1; records: RawMediaRecord[] };
+
+export type RawMediaRecord = {
+  id: string;
+  sha256: string;
+  originalFilename: string;
+  intakePath: string;
+  usbPath: string;
+  bytes: number;
+  ingestedAt: string;
+  metadata: RawMediaMetadata;
+  projectIds: string[];
+};
+
+export type RawMediaMetadata = {
+  duration: number;
+  container: string;
+  videoCodec: string;
+  width: number;
+  height: number;
+  frameRate: string;
+  audioCodec: string | null;
+  audioSampleRate: number | null;
+  audioChannels: number | null;
+  bitRate: number;
 };
 
 export type MediaOrigin =
@@ -169,6 +208,21 @@ export type SubjectCutoutOverlay = {
   layer: number;
   opacity: number;
   processing: CutoutProcessing;
+  createdAt: string;
+};
+
+export type VideoOverlay = {
+  id: string;
+  kind: "video";
+  label: string;
+  sourceId: string;
+  sourceStart: number;
+  sourceEnd: number;
+  target: { type: "selected-cut"; start: number; end: number };
+  layout: OverlayLayout;
+  layer: number;
+  opacity: number;
+  muted: boolean;
   createdAt: string;
 };
 

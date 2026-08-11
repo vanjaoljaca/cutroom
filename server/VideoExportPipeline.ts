@@ -1,4 +1,5 @@
 export async function renderProjectVideo(projectId: string, options: RenderOptions = {}): Promise<ExportReceipt> {
+  await assertRuntimeStorageAvailable();
   const project = await readStoredProject(projectId);
   const cuts = programRanges(project);
   if (!cuts.length) throw new Error("The selected cut is empty.");
@@ -11,7 +12,7 @@ async function renderTikTok(project: VideoProject, cuts: SourceRange[], options:
   const snapshotHash = projectSnapshotHash(project);
   const jobId = options.jobId || `export-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const paths = await prepareExportPaths(project, "tiktok-60", "mp4");
-  const source = await probeMedia(project.sourcePath);
+  const source = await probeMedia(primarySourcePath(project));
   const command = buildExportCommand(project, cuts, source, paths.partial);
   log("export_started", { projectId: project.id, jobId, preset: "tiktok-60", duration: cutDuration(cuts), output: paths.output });
   try {
@@ -29,7 +30,7 @@ async function renderTikTok(project: VideoProject, cuts: SourceRange[], options:
 
 export function projectSnapshotHash(project: VideoProject): string {
   const bundles = project.assetLibrary.bundles.map(({ id, selectedAssetId }) => ({ id, selectedAssetId }));
-  return createHash("sha256").update(JSON.stringify({ mediaLibrary: project.mediaLibrary, programTimeline: project.programTimeline, overlays: project.overlays, cutoutOverlays: project.cutoutOverlays, bundles })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ mediaLibrary: project.mediaLibrary, programTimeline: project.programTimeline, overlays: project.overlays, cutoutOverlays: project.cutoutOverlays, videoOverlays: project.videoOverlays, bundles })).digest("hex");
 }
 
 async function prepareExportPaths(project: VideoProject, preset: ExportPreset, extension: "mov" | "mp4"): Promise<ExportPaths> {
@@ -43,10 +44,11 @@ async function prepareExportPaths(project: VideoProject, preset: ExportPreset, e
 
 async function renderOriginalFormat(project: VideoProject, cuts: SourceRange[], options: RenderOptions): Promise<ExportReceipt> {
   if (cuts.some((cut) => cut.sourceId !== project.mediaLibrary.primarySourceId)) throw new Error("Original-format smart rendering cannot join multiple source videos safely. Use Export for TikTok for this stitch edit.");
-  const source = await probeMedia(project.sourcePath);
-  const keyframes = await probeKeyframes(project.sourcePath);
+  const sourcePath = primarySourcePath(project);
+  const source = await probeMedia(sourcePath);
+  const keyframes = await probeKeyframes(sourcePath);
   const overlays = editorialOverlays(project, cuts).map((item) => ({ id: item.id, start: item.start, end: item.end }));
-  const plan = planSourcePreservingExport({ projectId: project.id, source: sourcePlanMedia(project.sourcePath, source), cuts, overlays, keyframes });
+  const plan = planSourcePreservingExport({ projectId: project.id, source: sourcePlanMedia(sourcePath, source), cuts, overlays, keyframes });
   const snapshotHash = projectSnapshotHash(project);
   const jobId = options.jobId || `export-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const paths = await prepareExportPaths(project, "original-format", "mov");
@@ -58,7 +60,7 @@ async function renderOriginalFormat(project: VideoProject, cuts: SourceRange[], 
 
 async function renderSourceCopy(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, plan: SourcePreservingPlan, options: RenderOptions): Promise<ExportReceipt> {
   const listPath = `${paths.partial}.ffconcat`;
-  await writeFile(listPath, concatList(project.sourcePath, cuts));
+  await writeFile(listPath, concatList(primarySourcePath(project), cuts));
   try {
     await runFfmpeg(["-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-y", "-f", "concat", "-safe", "0", "-i", listPath, "-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-movflags", "+faststart", "-avoid_negative_ts", "make_zero", paths.partial], cutDuration(cuts), options);
     const output = await probeMedia(paths.partial);
@@ -138,20 +140,34 @@ function cutoutOverlayFilter(interval: CutoutProgramInterval, index: number, inp
   return [scaled, `[${base}][cutout${index}]overlay=x=${x}:y=${y}:enable='between(t,${interval.start},${interval.end})':eof_action=pass[composite${index}]`];
 }
 
+function videoOverlayFilter(interval: VideoOverlayProgramInterval, index: number, inputIndex: number, width: number, height: number): string[] {
+  const overlay = interval.overlay;
+  const boxWidth = even(overlay.layout.width * width);
+  const boxHeight = overlay.layout.height === null ? null : even(overlay.layout.height * height);
+  const scaled = overlayScale(`[${inputIndex}:v:0]`, `videooverlay${index}`, boxWidth, boxHeight, overlay.layout.fit, overlay.opacity).replace("format=rgba,", `setpts=PTS-STARTPTS+${interval.start}/TB,format=rgba,`);
+  const base = index === 0 ? "cutv" : `composite${index - 1}`;
+  const position = `x=${Math.round(overlay.layout.x * width)}:y=${Math.round(overlay.layout.y * height)}`;
+  return [scaled, `[${base}][videooverlay${index}]overlay=${position}:enable='between(t,${interval.start},${interval.end})':eof_action=pass[composite${index}]`];
+}
+
 function editorialOverlayFilter(project: VideoProject, item: EditorialOverlayInterval, index: number, inputStart: number, width: number, height: number) {
   const inputIndex = inputStart + index;
-  return item.kind === "image" ? imageOverlayFilter(project, item.interval, index, inputIndex, width, height) : cutoutOverlayFilter(item.interval, index, inputIndex, width, height);
+  if (item.kind === "image") return imageOverlayFilter(project, item.interval, index, inputIndex, width, height);
+  return item.kind === "cutout" ? cutoutOverlayFilter(item.interval, index, inputIndex, width, height) : videoOverlayFilter(item.interval, index, inputIndex, width, height);
 }
 
 function editorialOverlays(project: VideoProject, cuts: SourceRange[]): EditorialOverlayInterval[] {
   const images = imageOverlayCutIntervals(project, cuts).map((interval) => ({ kind: "image" as const, id: interval.overlay.id, layer: interval.overlay.layer, start: interval.start, end: interval.end, interval }));
   const cutouts = cutoutProgramIntervals(project, cuts).map((interval) => ({ kind: "cutout" as const, id: interval.overlay.id, layer: interval.overlay.layer, start: interval.start, end: interval.end, interval }));
-  return [...images, ...cutouts].sort((left, right) => left.layer - right.layer || left.id.localeCompare(right.id));
+  const videos = videoOverlayProgramIntervals(project, cuts).map((interval) => ({ kind: "video" as const, id: interval.overlay.id, layer: interval.overlay.layer, start: interval.start, end: interval.end, interval }));
+  return [...images, ...cutouts, ...videos].sort((left, right) => left.layer - right.layer || left.id.localeCompare(right.id));
 }
 
 function addEditorialInput(args: string[], project: VideoProject, item: EditorialOverlayInterval, fps: number) {
   if (item.kind === "image") return void args.push("-loop", "1", "-framerate", fps.toFixed(6), "-i", assetPath(project, item.interval.overlay.assetId));
-  args.push("-i", cutoutRenderPath(project, item.interval));
+  if (item.kind === "cutout") return void args.push("-i", cutoutRenderPath(project, item.interval));
+  const overlay = item.interval.overlay;
+  args.push("-ss", overlay.sourceStart.toFixed(6), "-t", (item.end - item.start).toFixed(6), "-i", overlaySourcePath(project, overlay.sourceId));
 }
 
 function assertCutoutsReady(items: EditorialOverlayInterval[]) {
@@ -284,6 +300,18 @@ function programSourcePath(project: VideoProject, cut: SourceRange): string {
   return mediaSourcePath(source);
 }
 
+function primarySourcePath(project: VideoProject): string {
+  const source = project.mediaLibrary.sources.find((candidate) => candidate.id === project.mediaLibrary.primarySourceId);
+  if (!source) throw new Error("Primary media source is missing.");
+  return mediaSourcePath(source);
+}
+
+function overlaySourcePath(project: VideoProject, sourceId: string): string {
+  const source = project.mediaLibrary.sources.find((candidate) => candidate.id === sourceId);
+  if (!source) throw new Error(`Unknown video overlay source: ${sourceId}`);
+  return mediaSourcePath(source);
+}
+
 function sourceHasAudio(project: VideoProject, cut: SourceRange): boolean {
   const source = project.mediaLibrary.sources.find((candidate) => candidate.id === cut.sourceId);
   return source?.metadata?.audioCodec !== null;
@@ -297,7 +325,7 @@ export type RenderOptions = { jobId?: string; preset?: ExportPreset; signal?: Ab
 type ExportPaths = { output: string; partial: string; manifest: string; exportVersion: number };
 type MediaProbe = { width: number; height: number; videoCodec: string; videoTag: string; videoProfile: string; videoLevel: number; audioCodec: string; audioSampleRate: number; audioChannels: number; duration: number; container: string; rotation: number; averageFrameRate: number; reportedFrameRate: number; frameCount: number; bitRate: number; pixelFormat: string; colorSpace: string; colorTransfer: string; colorPrimaries: string; colorRange: string; sampleAspectRatio: string };
 type ProbeJson = { streams: Array<{ codec_type: string; codec_name: string; codec_tag_string?: string; profile?: string; level?: number; sample_rate?: string; channels?: number; width?: number; height?: number; avg_frame_rate?: string; r_frame_rate?: string; nb_frames?: string; bit_rate?: string; pix_fmt?: string; color_space?: string; color_transfer?: string; color_primaries?: string; color_range?: string; sample_aspect_ratio?: string; side_data_list?: Array<{ side_data_type: string; rotation?: number }> }>; format: { duration: string; format_name?: string } };
-type EditorialOverlayInterval = { kind: "image"; id: string; layer: number; start: number; end: number; interval: ImageOverlayCutInterval } | { kind: "cutout"; id: string; layer: number; start: number; end: number; interval: CutoutProgramInterval };
+type EditorialOverlayInterval = { kind: "image"; id: string; layer: number; start: number; end: number; interval: ImageOverlayCutInterval } | { kind: "cutout"; id: string; layer: number; start: number; end: number; interval: CutoutProgramInterval } | { kind: "video"; id: string; layer: number; start: number; end: number; interval: VideoOverlayProgramInterval };
 
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -315,10 +343,12 @@ import { validateTikTokRestrictions } from "./TikTokExportValidator";
 import { exportFileStem } from "./ExportNaming";
 import { mediaSourcePath } from "./ReferenceMediaCache";
 import { cutoutProgramIntervals, type CutoutProgramInterval } from "../src/CutoutOverlayModel";
+import { videoOverlayProgramIntervals, type VideoOverlayProgramInterval } from "../src/VideoOverlayModel";
+import { assertRuntimeStorageAvailable } from "./RuntimeStorage";
 
 const execFile = promisify(execFileCallback);
-const ffmpegPath = process.env.CUTROOM_FFMPEG || "ffmpeg";
-const ffprobePath = process.env.CUTROOM_FFPROBE || "ffprobe";
+const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
+const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
 const qualityProfile: ExportQualityProfile = { encoder: "libx264", preset: "slow", crf: 14, profile: "high", level: "4.2", pixelFormat: "yuv420p", color: "bt709", fpsMode: "cfr-60", audio: "aac-lc-48k-256k" };
 
 export class SourcePreservingExportBlockedError extends Error {

@@ -14,6 +14,15 @@ describe("filesystem project catalog", () => {
     expect(receipt.trashPath).toContain("/trash/projects/trash-me-");
     await expect(catalog.store.readStoredProject("trash-me")).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("exposes shared raw-media provenance without making it a project hierarchy", async () => {
+    const catalog = await fixtureCatalog();
+    const first = fixtureProject("one", "One"); const second = fixtureProject("two", "Two");
+    first.mediaLibrary.sources[0].rawMediaId = "raw.1234567890abcdef"; second.mediaLibrary.sources[0].rawMediaId = "raw.1234567890abcdef";
+    await catalog.store.writeStoredProject(first); await catalog.store.writeStoredProject(second);
+    const listed = await catalog.module.listProjects();
+    expect(listed.map((project) => project.provenance[0].provenanceId)).toEqual(["raw.1234567890abcdef", "raw.1234567890abcdef"]);
+  });
 });
 
 async function fixtureCatalog() {

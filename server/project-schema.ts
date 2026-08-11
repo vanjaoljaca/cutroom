@@ -4,12 +4,13 @@ export function normalizeVideoProject(project: VideoProject): VideoProject {
   const bundles = library.bundles || [];
   const overlays = (project.overlays || []).map((overlay) => ({ ...overlay, bundleId: overlay.bundleId || null }));
   const cutoutOverlays = project.cutoutOverlays || [];
+  const videoOverlays = project.videoOverlays || [];
   const exportHistory = (project.exportHistory || []).map((receipt, index) => normalizeExportReceipt(receipt, index + 1));
-  const mediaLibrary = project.mediaLibrary || legacyMediaLibrary(project);
+  const mediaLibrary = normalizeMediaLibrary(project.mediaLibrary || legacyMediaLibrary(project));
   const programTimeline = project.programTimeline || createProgramTimeline(project.scenes, mediaLibrary.primarySourceId, project.createdAt || "");
   const recordingPlan = recordingPlanForProject({ ...project, mediaLibrary, programTimeline } as VideoProject);
   const editorPreferences = project.editorPreferences || { timelineWindow: "auto" };
-  return { ...project, schemaVersion: 1, revision: project.revision || 0, recordingPlan, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
+  return { ...project, schemaVersion: 1, revision: project.revision || 0, recordingPlan, mediaLibrary, programTimeline, editorPreferences, assetLibrary: { version: 1, assets, bundles }, overlays, cutoutOverlays, videoOverlays, pitchAnalysis: currentPitchReference(project.pitchAnalysis), exportHistory };
 }
 
 export function validateVideoProject(input: VideoProject): VideoProject {
@@ -24,6 +25,7 @@ export function validateVideoProject(input: VideoProject): VideoProject {
   validateBundles(project);
   project.overlays.forEach((overlay) => validateOverlay(project, overlay));
   project.cutoutOverlays.forEach((overlay) => validateCutoutOverlay(project, overlay));
+  project.videoOverlays.forEach((overlay) => validateVideoOverlay(project, overlay));
   if (project.pitchAnalysis) validatePitchReference(project.pitchAnalysis);
   project.exportHistory.forEach(validateExportReceipt);
   return project;
@@ -56,9 +58,22 @@ function validateMediaSource(source: VideoMediaSource, ids: Set<string>) {
   assert(source.kind === "video" && source.label.trim().length > 0, `Invalid media source: ${source.id}`);
   assert(["instruction", "creator", "reference"].includes(source.role), `Invalid media role: ${source.id}`);
   validateMediaOrigin(source);
+  assert(source.rawMediaId === undefined || source.rawMediaId === null || /^raw\.[a-f0-9]{16}$/.test(source.rawMediaId), `Invalid raw media reference: ${source.id}`);
   if (source.cache) validateMediaCache(source.cache, source.id);
   if (source.metadata) validateMediaMetadata(source.metadata, source.id);
   ids.add(source.id);
+}
+
+function validateVideoOverlay(project: VideoProject, overlay: VideoOverlay) {
+  assert(/^video-overlay\.[a-z0-9.-]+$/.test(overlay.id) && overlay.kind === "video", `Invalid video overlay id: ${overlay.id}`);
+  assert(project.mediaLibrary.sources.some((source) => source.id === overlay.sourceId), `Unknown video overlay source: ${overlay.id}`);
+  assert(overlay.sourceStart >= 0 && overlay.sourceEnd > overlay.sourceStart, `Invalid video overlay source interval: ${overlay.id}`);
+  const sourceDuration = project.mediaLibrary.sources.find((source) => source.id === overlay.sourceId)?.metadata?.duration;
+  assert(sourceDuration === undefined || sourceDuration === null || overlay.sourceEnd <= sourceDuration + 0.001, `Video overlay exceeds source media: ${overlay.id}`);
+  assert(overlay.target.type === "selected-cut" && overlay.target.start >= 0 && overlay.target.end > overlay.target.start, `Invalid video overlay target: ${overlay.id}`);
+  assert(overlay.target.end - overlay.target.start <= overlay.sourceEnd - overlay.sourceStart + 0.001, `Video overlay target exceeds source duration: ${overlay.id}`);
+  validateOverlayLayout(overlay.layout, overlay.id);
+  assert(Number.isInteger(overlay.layer) && overlay.opacity >= 0 && overlay.opacity <= 1 && typeof overlay.muted === "boolean", `Invalid video overlay layer/opacity: ${overlay.id}`);
 }
 
 function validateMediaOrigin(source: VideoMediaSource) {
@@ -202,11 +217,16 @@ function validateOverlay(project: VideoProject, overlay: ImageOverlay) {
   assert(project.assetLibrary.assets.some((asset) => asset.id === overlay.assetId), `Unknown overlay asset: ${overlay.assetId}`);
   if (overlay.bundleId) validateOverlayBundle(project, overlay);
   assert(overlay.target.start >= 0 && overlay.target.end > overlay.target.start, `Invalid overlay interval: ${overlay.id}`);
-  assert(overlay.layout.x >= 0 && overlay.layout.x <= 1 && overlay.layout.y >= 0 && overlay.layout.y <= 1, `Invalid overlay position: ${overlay.id}`);
-  assert(overlay.layout.width > 0 && overlay.layout.width <= 1, `Invalid overlay width: ${overlay.id}`);
-  assert(overlay.layout.height === null || (overlay.layout.height > 0 && overlay.layout.height <= 1), `Invalid overlay height: ${overlay.id}`);
+  validateOverlayLayout(overlay.layout, overlay.id);
   assert(Number.isInteger(overlay.layer) && overlay.opacity >= 0 && overlay.opacity <= 1, `Invalid overlay layer/opacity: ${overlay.id}`);
   if (overlay.target.type === "take") validateTakeTarget(project, overlay);
+}
+
+function validateOverlayLayout(layout: OverlayLayout, id: string) {
+  assert(layout.x >= 0 && layout.x <= 1 && layout.y >= 0 && layout.y <= 1, `Invalid overlay position: ${id}`);
+  assert(layout.width > 0 && layout.width <= 1, `Invalid overlay width: ${id}`);
+  assert(layout.height === null || (layout.height > 0 && layout.height <= 1), `Invalid overlay height: ${id}`);
+  assert(["contain", "cover"].includes(layout.fit), `Invalid overlay fit: ${id}`);
 }
 
 function validateOverlayBundle(project: VideoProject, overlay: ImageOverlay) {
@@ -235,12 +255,16 @@ function currentPitchReference(reference: PitchAnalysisReference | null | undefi
 }
 
 function legacyMediaLibrary(project: VideoProject): MediaLibrary {
-  const primary: VideoMediaSource = { id: "media.primary", kind: "video", role: "instruction", label: project.sourceName || project.title || "Primary source", origin: { type: "local", path: project.sourcePath }, cache: null, metadata: null, createdAt: project.createdAt || "" };
+  const primary: VideoMediaSource = { id: "media.primary", kind: "video", role: "instruction", label: project.sourceName || project.title || "Primary source", rawMediaId: null, origin: { type: "local", path: project.sourcePath }, cache: null, metadata: null, createdAt: project.createdAt || "" };
   return { version: 1, primarySourceId: primary.id, sources: [primary] };
+}
+
+function normalizeMediaLibrary(library: MediaLibrary): MediaLibrary {
+  return { ...library, sources: library.sources.map((source) => ({ ...source, rawMediaId: source.rawMediaId || null })) };
 }
 
 const emptySource = { sourceUrl: null, attribution: null, license: null };
 
-import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, VideoMediaMetadata, VideoMediaSource, VideoProject } from "../src/analysis-model";
+import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, OverlayLayout, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, VideoMediaMetadata, VideoMediaSource, VideoOverlay, VideoProject } from "../src/analysis-model";
 import { createProgramTimeline } from "../src/ProgramTimelineModel";
 import { recordingPlanForProject } from "../src/RecordingPlanModel";

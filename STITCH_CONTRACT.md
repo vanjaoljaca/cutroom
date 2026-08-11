@@ -1,6 +1,19 @@
 # Stitch editing contract
 
-Cutroom keeps edit truth in each runtime-backed `project.json`. SQLite may later index that state, but callers use the CLI/API and project schema rather than the storage implementation.
+Cutroom keeps edit truth in each USB-backed `project.json`. SQLite may later index that state, but callers use the CLI/API and project schema rather than the storage implementation.
+
+## Shared raw recordings
+
+Raw recordings are deduplicated by SHA-256 in `/Volumes/VanjaOljacaX/Cutroom/raw-videos/raw-media.json`. Projects reference stable `raw.*` records through `mediaLibrary.sources[].rawMediaId`, so one recording can feed many projects and one project can use many recordings.
+
+```sh
+npm run raw-media -- ingest --path /absolute/path/to/recording.mov
+npm run raw-media -- attach --project <project-id> --raw <raw-id> --role instruction --primary true
+npm run raw-media -- detach --project <project-id> --raw <raw-id>
+npm run recording:link-raw -- --raw <raw-id>
+```
+
+HTTP equivalents are `GET|POST /api/raw-media` and `POST|DELETE /api/projects/:projectId/media/raw[/:rawMediaId]`. Ingesting the same bytes twice returns the existing record and durable file. Cutroom fails clearly when `/Volumes/VanjaOljacaX/Cutroom` is unavailable; media never falls back to Downloads, `/tmp`, or a home cache.
 
 ## Reference sources
 
@@ -10,7 +23,7 @@ Add a remotely regenerable reference:
 npm run media:reference:add -- <project-id> <remote-url> "Reference label"
 ```
 
-This adds `mediaLibrary.sources[]` with a stable `media.reference.*` ID, durable remote origin, metadata, and disposable `cache/media/<sha256>.<ext>` under `$CUTROOM_RUNTIME_ROOT`.
+This adds `mediaLibrary.sources[]` with a stable `media.reference.*` ID, durable remote origin, metadata, and disposable `cache/media/<sha256>.<ext>` under `/Volumes/VanjaOljacaX/Cutroom`.
 
 HTTP equivalents:
 
@@ -71,6 +84,20 @@ POST body:
 }
 ```
 
-The durable `cutoutOverlays[]` record owns the source interval, clip-relative target interval, normalized position/size, opacity, layer, provider/version, status, and runtime-relative preview/render/recipe paths. Preview artifacts are VP9-alpha WebM; export artifacts are ProRes 4444 alpha MOV. The installed runtime and model live under `$CUTROOM_RUNTIME_ROOT/runtime/rembg`.
+The durable `cutoutOverlays[]` record owns the source interval, clip-relative target interval, normalized position/size, opacity, layer, provider/version, status, and USB-relative preview/render/recipe paths. Preview artifacts are VP9-alpha WebM; export artifacts are ProRes 4444 alpha MOV. The installed runtime and model live under `/Volumes/VanjaOljacaX/Cutroom/runtime/rembg`.
 
 TikTok export composites all program sources, images, and ready cutouts at 1080×1920/60 fps. Original-format export rejects a multi-source stitch when bitstream-safe smart rendering is unavailable instead of silently transcoding it.
+
+## Rectangular video overlays
+
+Attach a project-owned picture-in-picture video:
+
+```sh
+npm run video-overlay:attach -- \
+  --project <project-id> --path /absolute/path/to/overlay.mp4 --label "App demo" \
+  --source-start 0 --source-end 11.33 --target-start 78.60 --target-end 89.93 \
+  --x 0.03 --y 0.05 --width 0.32 --fit contain --placement avoid-face-left \
+  --opacity 1 --muted true --layer 20
+```
+
+`videoOverlays[]` owns a stable ID, source interval, assembled-program target interval, normalized layout, aspect-preserving fit, opacity, mute state, layer, and source provenance. Preview, move, resize, trim, reload, and TikTok export all consume that same record. Original-format export reports a blocked source-preserving plan when compositing would require a transform; it never silently substitutes a transcode.

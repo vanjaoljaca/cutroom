@@ -348,6 +348,21 @@ export function App() {
     commitProject({ ...project, cutoutOverlays }, persist);
   }
 
+  function changeVideoOverlayTiming(id: string, start: number, end: number, persist: boolean) {
+    if (!project) return;
+    const videoOverlays = project.videoOverlays.map((overlay) => {
+      const sourceDuration = project.mediaLibrary.sources.find((source) => source.id === overlay.sourceId)?.metadata?.duration;
+      return overlay.id === id ? videoOverlayWithProgramInterval(overlay, ranges, start, end, sourceDuration) : overlay;
+    });
+    commitProject({ ...project, videoOverlays }, persist);
+  }
+
+  function changeVideoOverlayLayout(id: string, layout: OverlayLayout, persist: boolean) {
+    if (!project) return;
+    const videoOverlays = project.videoOverlays.map((overlay) => overlay.id === id ? { ...overlay, layout } : overlay);
+    commitProject({ ...project, videoOverlays }, persist);
+  }
+
   async function createSubjectCutout(media: VideoMediaSource, start: number, end: number, targetClipId: string) {
     if (!project) return;
     try { applyCutoutStatus(await requestCutout(project.id, { sourceId: media.id, sourceStart: start, sourceEnd: end, targetClipId, label: `${media.label} cutout` })); }
@@ -493,6 +508,7 @@ export function App() {
     <canvas className="video-paint-surface" ref={videoCanvasRef} aria-hidden="true" />
     {project && workflowStep !== "projects" && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
     {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
+    {project && workflowStep !== "projects" && <VideoOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeVideoOverlayLayout} />}
   </div><div className="preview-utility-controls"><button aria-label={muted ? "Unmute" : "Mute"} title={muted ? "Unmute" : "Mute"} onClick={() => setMuted((value) => !value)}>{muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}</button><button aria-label="Fullscreen" title="Fullscreen" onClick={() => viewerRef.current?.requestFullscreen()}><ArrowsOut size={20} /></button></div></aside>;
 
   const projectRail = <ProjectRail open={projectRailOpen} currentProjectId={project?.id || null} onClose={() => setProjectRailOpen(false)} onProjectRenamed={applyRenamedProject} onProjectTrashed={applyTrashedProject} />;
@@ -541,6 +557,7 @@ export function App() {
           onOverlayTimingChange={changeOverlayTiming}
           onCandidateSelect={selectBundleCandidate}
           onCutoutTimingChange={changeCutoutTiming}
+          onVideoOverlayTimingChange={changeVideoOverlayTiming}
           timelineWindow={project?.editorPreferences.timelineWindow || "auto"}
           onTimelineWindowChange={changeTimelineWindow}
           selectedClipId={selectedClipId}
@@ -609,7 +626,7 @@ function ExportNotice({ status, onCancel, onRetry }: ExportNoticeProps) {
   return null;
 }
 
-function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, addMediaOpen, onAddMedia, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
+function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playhead, onViewPitch, addMediaOpen, onAddMedia, onSeek, onTrim, selectedOverlayId, onSelectOverlay, onOverlayTimingChange, onCandidateSelect, onCutoutTimingChange, onVideoOverlayTimingChange, timelineWindow, onTimelineWindowChange, selectedClipId, onSelectClip, onRemoveClip }: TimelineProps) {
   const timelineDuration = mode === "cut" ? cutDuration(ranges) : duration;
   const canvasWidth = `${timelineCanvasPercent(timelineDuration, timelineWindow)}%`;
   const multiSource = mode === "cut" && new Set(ranges.map((range) => range.sourceId)).size > 1;
@@ -635,6 +652,7 @@ function Timeline({ project, mode, duration, ranges, thumbnails, waveform, playh
               <div className="timeline-scale"><span>0:00</span><span>{formatTime(timelineDuration)}</span></div>
               {mode === "cut" && project && <ImageOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onOverlayTimingChange} onCandidateSelect={onCandidateSelect} />}
               {mode === "cut" && project && <CutoutOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onCutoutTimingChange} />}
+              {mode === "cut" && project && <VideoOverlayTracks project={project} ranges={ranges} playhead={playhead} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onTimingChange={onVideoOverlayTimingChange} />}
             </div>
           </div>
         </div>
@@ -966,7 +984,7 @@ function useWaveformExtraction(source: string, setWaveform: Dispatch<SetStateAct
 }
 
 type SourceState = { name: string; url: string; objectUrl: boolean };
-type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; addMediaOpen: boolean; onAddMedia: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
+type TimelineProps = { project: VideoProject | null; mode: ViewMode; duration: number; ranges: SourceRange[]; thumbnails: string[]; waveform: number[]; playhead: string; onViewPitch: () => void; addMediaOpen: boolean; onAddMedia: () => void; onSeek: (event: MouseEvent<HTMLDivElement>) => void; onTrim: TimelineTrimHandler; selectedOverlayId: string | null; onSelectOverlay: (id: string, start: number) => void; onOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onCandidateSelect: (bundleId: string, assetId: string) => void; onCutoutTimingChange: (id: string, start: number, end: number, commit: boolean) => void; onVideoOverlayTimingChange: (id: string, start: number, end: number, commit: boolean) => void; timelineWindow: TimelineWindow; onTimelineWindowChange: (window: TimelineWindow) => void; selectedClipId: string | null; onSelectClip: (id: string) => void; onRemoveClip: () => void };
 type ExportNoticeProps = { status: ExportJobStatus | null; onCancel: () => void; onRetry: () => void };
 type AnalysisPanelProps = { project: VideoProject; duration: number; previewTakeId: string | null; onSeek: (time: number, index?: number) => void; onUpdate: (sceneId: string, takeId: string, edge: "start" | "end", value: number) => void; onSelect: (sceneId: string, takeId: string) => void; onPreview: (sceneId: string, takeId: string) => void };
 type SceneRowsProps = Omit<AnalysisPanelProps, "project"> & { scene: SceneProposal };
@@ -1010,6 +1028,8 @@ import { insertProgramClip, programRanges, removeProgramClip, sourceProgramClip,
 import { SourceBrowser } from "./SourceBrowser";
 import { CutoutOverlayStage, CutoutOverlayTracks } from "./CutoutOverlayEditors";
 import { cutoutWithProgramInterval } from "./CutoutOverlayModel";
+import { VideoOverlayStage, VideoOverlayTracks } from "./VideoOverlayEditors";
+import { videoOverlayWithProgramInterval } from "./VideoOverlayModel";
 import type { CreateCutoutInput, CutoutJobStatus } from "./CutoutModel";
 import { canonicalProjectPath, legacyProjectRedirect, projectIdFromLocation } from "./ProjectRoute";
 import { paintVideoFrame, superviseVideoPainting } from "./VideoPaintSurface";

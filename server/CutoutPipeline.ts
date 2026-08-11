@@ -1,5 +1,6 @@
 export async function renderCutoutArtifacts(project: VideoProject, overlay: SubjectCutoutOverlay, onProgress?: (progress: number) => void): Promise<CutoutArtifacts> {
   log("cutout_render_started", { projectId: project.id, overlayId: overlay.id, sourceId: overlay.sourceId });
+  await assertRuntimeStorageAvailable();
   await access(rembgPythonPath).catch(() => { throw new Error(`Local person segmentation is not installed at ${rembgPythonPath}.`); });
   const source = project.mediaLibrary.sources.find((candidate) => candidate.id === overlay.sourceId);
   if (!source) throw new Error(`Unknown cutout source: ${overlay.sourceId}`);
@@ -88,13 +89,13 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { SubjectCutoutOverlay, VideoProject } from "../src/analysis-model";
+import { assertRuntimeStorageAvailable } from "./RuntimeStorage";
 import { mediaSourcePath } from "./ReferenceMediaCache";
-import { runtimeRoot } from "./media-analysis";
 import { projectDirectory } from "./project-store";
 
 const execFile = promisify(execFileCallback);
-const ffmpegPath = process.env.CUTROOM_FFMPEG || "ffmpeg";
-const rembgPythonPath = process.env.CUTROOM_REMBG_PYTHON || join(runtimeRoot, "runtime/rembg/.venv/bin/python");
-const rembgModelRoot = process.env.CUTROOM_REMBG_MODELS || join(runtimeRoot, "runtime/rembg/models");
+const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
+const rembgPythonPath = process.env.CUTROOM_REMBG_PYTHON || "/Volumes/VanjaOljacaX/Cutroom/runtime/rembg/.venv/bin/python";
+const rembgModelRoot = process.env.CUTROOM_REMBG_MODELS || "/Volumes/VanjaOljacaX/Cutroom/runtime/rembg/models";
 const pythonScript = fileURLToPath(new URL("../scripts/RemoveVideoBackground.py", import.meta.url));
 const cutoutFps = 30;

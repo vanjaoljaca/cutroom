@@ -34,6 +34,7 @@ export async function removeRemoteReference(projectId: string, sourceId: string)
 }
 
 export function mediaSourcePath(source: VideoMediaSource): string {
+  if (source.rawMediaId) return resolveRawMediaPath(source.rawMediaId);
   if (source.origin.type === "local") return source.origin.path;
   if (!source.cache) throw new Error(`Reference cache is missing for ${source.id}. Regenerate it from ${source.origin.url}.`);
   return join(runtimeRoot, source.cache.relativePath);
@@ -45,6 +46,7 @@ export function remoteMediaId(url: string): string {
 
 async function downloadRemoteMedia(url: string): Promise<DownloadedMedia> {
   assertRemoteUrl(url);
+  await assertRuntimeStorageAvailable();
   await mkdir(join(runtimeRoot, "cache", "media"), { recursive: true });
   const temporary = join(runtimeRoot, "cache", "media", `.download-${randomUUID()}.part`);
   try {
@@ -84,7 +86,7 @@ async function probeVideo(path: string): Promise<VideoMediaMetadata> {
 }
 
 function remoteSource(input: AddRemoteReferenceInput, downloaded: DownloadedMedia): VideoMediaSource {
-  return { id: remoteMediaId(input.url), kind: "video", role: "reference", label: input.label.trim(), origin: { type: "remote", url: input.url }, cache: downloaded.cache, metadata: downloaded.metadata, createdAt: new Date().toISOString() };
+  return { id: remoteMediaId(input.url), kind: "video", role: "reference", label: input.label.trim(), rawMediaId: null, origin: { type: "remote", url: input.url }, cache: downloaded.cache, metadata: downloaded.metadata, createdAt: new Date().toISOString() };
 }
 
 function replaceSource(sources: VideoMediaSource[], source: VideoMediaSource) {
@@ -129,8 +131,9 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import type { RemoteMediaCache, VideoMediaMetadata, VideoMediaSource } from "../src/analysis-model";
-import { runtimeRoot } from "./media-analysis";
+import { assertRuntimeStorageAvailable, runtimeRoot } from "./RuntimeStorage";
 import { readStoredProject, writeStoredProject } from "./project-store";
+import { resolveRawMediaPath } from "./RawMediaLibrary";
 
 const execFile = promisify(execFileCallback);
-const ffprobePath = process.env.CUTROOM_FFPROBE || "ffprobe";
+const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
