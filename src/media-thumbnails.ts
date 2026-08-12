@@ -6,6 +6,13 @@ export async function createVideoThumbnails(source: string, duration: number, co
   return thumbnails;
 }
 
+export async function createVideoIntervalThumbnails(source: string, start: number, end: number, count = 4): Promise<string[]> {
+  const video = await loadVideo(source);
+  const duration = Math.max(0.04, end - start);
+  const times = Array.from({ length: count }, (_, index) => start + duration * ((index + 0.5) / count));
+  return Promise.all(times.map((time) => captureFrame(video, time)));
+}
+
 function loadVideo(source: string): Promise<HTMLVideoElement> {
   const video = document.createElement("video");
   video.muted = true;
@@ -35,4 +42,3 @@ function waitForEvent(target: HTMLVideoElement, event: string): Promise<void> {
     target.addEventListener("error", () => reject(target.error), { once: true });
   });
 }
-

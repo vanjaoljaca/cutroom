@@ -42,7 +42,7 @@ function validateTextOverlay(project: VideoProject, overlay: TextOverlay) {
   if (overlay.target.type === "selected-cut") assert(overlay.target.start >= 0 && overlay.target.end > overlay.target.start, `Invalid text interval: ${overlay.id}`);
   else validateTextClipTarget(project, overlay);
   assert(overlay.layout.x >= 0 && overlay.layout.x <= 1 && overlay.layout.y >= 0 && overlay.layout.y <= 1 && overlay.layout.maxWidth > 0 && overlay.layout.maxWidth <= 1, `Invalid text layout: ${overlay.id}`);
-  assert(["system-sans", "classic-social"].includes(overlay.style.fontFamily) && [400, 600, 700].includes(overlay.style.fontWeight) && overlay.style.fontSize >= 12 && overlay.style.fontSize <= 240, `Invalid text style: ${overlay.id}`);
+  assert(["system-sans", "classic-social", "tiktok-sans"].includes(overlay.style.fontFamily) && [400, 600, 700].includes(overlay.style.fontWeight) && overlay.style.fontSize >= 12 && overlay.style.fontSize <= 240, `Invalid text style: ${overlay.id}`);
   assert(/^#[a-fA-F0-9]{6}$/.test(overlay.style.color) && overlay.opacity >= 0 && overlay.opacity <= 1 && Number.isInteger(overlay.layer), `Invalid text color/layer: ${overlay.id}`);
   assert(overlay.style.backgroundColor === null || /^#[a-fA-F0-9]{6}$/.test(overlay.style.backgroundColor), `Invalid text background: ${overlay.id}`);
   assert(overlay.style.strokeColor === null || /^#[a-fA-F0-9]{6}$/.test(overlay.style.strokeColor), `Invalid text stroke: ${overlay.id}`);
@@ -77,7 +77,7 @@ function validateSubtitleCue(project: VideoProject, cue: SubtitleCue, ids: Set<s
 }
 
 function validateSubtitleStyle(style: SubtitleStyle) {
-  assert(["system-sans", "classic-social"].includes(style.fontFamily) && [400, 600, 700].includes(style.fontWeight), "Invalid subtitle font.");
+  assert(["system-sans", "classic-social", "tiktok-sans"].includes(style.fontFamily) && [400, 600, 700].includes(style.fontWeight), "Invalid subtitle font.");
   assert(style.fontSize >= 12 && style.fontSize <= 240 && style.strokeWidth >= 0 && style.strokeWidth <= 12, "Invalid subtitle typography.");
   assert(style.x >= 0 && style.x <= 1 && style.y >= 0 && style.y <= 1 && style.maxWidth > 0 && style.maxWidth <= 1, "Invalid subtitle placement.");
   assert(Number.isInteger(style.layer) && style.opacity >= 0 && style.opacity <= 1 && style.anchor === "bottom", "Invalid subtitle compositing style.");

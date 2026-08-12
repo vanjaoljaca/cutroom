@@ -154,7 +154,7 @@ export function textOverlayFilter(interval: TextOverlayProgramInterval, index: n
   return `[${input}]drawtext=fontfile='${fontPath(overlay.style.fontFamily)}':text='${escapeDrawtext(wrapped.text)}':fontsize=${overlay.style.fontSize}:fontcolor=${overlay.style.color}@${overlay.opacity}:x=${x}:y=${y}:enable='between(t,${interval.start},${interval.end})'${decoration}[text${index}]`;
 }
 
-function fontPath(preset: VideoProject["textOverlays"][number]["style"]["fontFamily"]) { return preset === "classic-social" ? classicSocialFontPath : textFontPath; }
+export function fontPath(preset: VideoProject["textOverlays"][number]["style"]["fontFamily"]) { if (preset === "tiktok-sans") return tiktokSansFontPath; return preset === "classic-social" ? classicSocialFontPath : textFontPath; }
 
 function allTextOverlayIntervals(project: VideoProject, cuts: SourceRange[]) {
   const subtitles = project.subtitleTrack.cues.map((cue) => subtitleAsTextOverlay(project, cue));
@@ -392,8 +392,9 @@ type EditorialOverlayInterval = { kind: "image"; id: string; layer: number; star
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { access, rename, mkdir, stat, unlink, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import type { ExportCadence, ExportPreset, ExportQualityProfile, ExportReceipt, ExportStrategy, VideoProject } from "../src/analysis-model";
 import type { SourceRange } from "../src/editor-model";
 import { cutDuration } from "../src/editor-model";
@@ -416,6 +417,7 @@ const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
 const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
 const textFontPath = "/System/Library/Fonts/SFNS.ttf";
 const classicSocialFontPath = "/System/Library/Fonts/Supplemental/Arial Bold.ttf";
+const tiktokSansFontPath = join(dirname(fileURLToPath(import.meta.url)), "assets/TikTokSans-Variable.ttf");
 const qualityProfile: ExportQualityProfile = { encoder: "libx264", preset: "slow", crf: 14, profile: "high", level: "4.2", pixelFormat: "yuv420p", color: "bt709", fpsMode: "cfr-60", audio: "aac-lc-48k-256k" };
 export const hardwareReviewProfile: ExportQualityProfile = { ...qualityProfile, encoder: "h264_videotoolbox", preset: "hardware", crf: null };
 

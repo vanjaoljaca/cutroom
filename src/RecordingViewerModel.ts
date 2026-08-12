@@ -11,6 +11,10 @@ export function projectRecordingViewer(output: RecordingPlanOutput, project: Vid
   return { kind: "project", projectId: project.id, outputId: output.id, mode: "cut", sourceId, sourceTime: ranges[0].start, ranges, duration: cutDuration(ranges) };
 }
 
+export function recordingPhaseProject(current: VideoProject | null, selected: VideoProject | null): VideoProject | null {
+  return selected || current;
+}
+
 export type RecordingViewerSelection = {
   kind: "raw" | "project";
   projectId: string;

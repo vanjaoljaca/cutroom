@@ -12,6 +12,13 @@ describe("recording workspace viewer selection", () => {
   it("rejects a project that does not match the selected output", () => {
     expect(() => projectRecordingViewer(outputs[0], project("wrong", [[0, 2]]))).toThrow("does not belong");
   });
+
+  it("keeps the raw strip on its host while phase navigation follows the selected peer project", () => {
+    const selected = project("direct", [[10, 42]]);
+    expect(rawRecordingViewer(host).sourceId).toBe("media.raw");
+    expect(recordingPhaseProject(host, selected)?.id).toBe("direct");
+    expect(recordingPhaseProject(host, null)?.id).toBe("host");
+  });
 });
 
 function project(id: string, intervals: Array<[number, number]>): VideoProject {
@@ -32,4 +39,4 @@ const host = {
 
 import { describe, expect, it } from "vitest";
 import type { RecordingPlanOutput, VideoProject } from "./analysis-model";
-import { projectRecordingViewer, rawRecordingViewer } from "./RecordingViewerModel";
+import { projectRecordingViewer, rawRecordingViewer, recordingPhaseProject } from "./RecordingViewerModel";

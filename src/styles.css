@@ -212,7 +212,10 @@ button:focus-visible,
 .program-media-strip { position: absolute; inset: 0; display: flex; }
 .program-media-strip span { min-width: 2px; position: relative; overflow: hidden; background: linear-gradient(135deg, #29302d, #1b211f); border-right: 1px solid rgb(255 255 255 / 12%); }
 .program-media-strip span.reference { background: linear-gradient(135deg, #35243e, #251b2b); }
+.program-media-strip span img { width: 25%; height: 100%; object-fit: cover; }
+.program-media-strip span.loading { background: linear-gradient(90deg, #202522 30%, #2d332f 50%, #202522 70%); background-size: 220% 100%; animation: program-filmstrip-loading 1.2s linear infinite; }
 .program-media-strip i { position: absolute; right: 5px; bottom: 27px; color: rgb(255 255 255 / 30%); font-size: 8px; font-style: normal; }
+@keyframes program-filmstrip-loading { to { background-position: -220% 0; } }
 
 .analysis-panel { margin-top: 14px; border: 1px solid #303330; background: #151715; }
 .recording-plan-phase { display: grid; gap: 14px; }
@@ -583,4 +586,11 @@ button:focus-visible,
   .scene-row em { display: none; }
   .take-row { grid-template-columns: 18px 64px 1fr; padding-left: 14px; }
   .take-row time, .trim-details { grid-column: 3; }
+}
+@font-face {
+  font-family: "TikTok Sans";
+  src: url("./assets/tiktok-sans/TikTokSans-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
 }

@@ -3,7 +3,7 @@ export function emptySubtitleTrack(): SubtitleTrack {
 }
 
 export function defaultSubtitleStyle(): SubtitleStyle {
-  return { fontFamily: "system-sans", fontSize: 58, fontWeight: 700, color: "#ffffff", backgroundColor: null, strokeColor: "#000000", strokeWidth: 4, shadow: true, align: "center", anchor: "bottom", x: 0.5, y: 0.82, maxWidth: 0.86, safeZone: true, layer: 40, opacity: 1 };
+  return { fontFamily: "tiktok-sans", fontSize: 58, fontWeight: 700, color: "#ffffff", backgroundColor: null, strokeColor: "#000000", strokeWidth: 4, shadow: true, align: "center", anchor: "bottom", x: 0.5, y: 0.82, maxWidth: 0.86, safeZone: true, layer: 40, opacity: 1 };
 }
 
 export function normalizeSubtitleTrack(project: VideoProject): { textOverlays: TextOverlay[]; subtitleTrack: SubtitleTrack } {

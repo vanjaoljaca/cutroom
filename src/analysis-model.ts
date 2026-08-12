@@ -256,7 +256,7 @@ export type TextOverlay = {
   text: string;
   target: { type: "selected-cut"; start: number; end: number } | { type: "program-clip"; clipId: string; sourceId: string; sourceStart: number; sourceEnd: number };
   layout: { anchor: "top" | "center" | "bottom"; x: number; y: number; maxWidth: number; safeZone: boolean };
-  style: { fontFamily: "system-sans" | "classic-social"; fontSize: number; fontWeight: 400 | 600 | 700; color: string; backgroundColor: string | null; strokeColor: string | null; strokeWidth: number; shadow: boolean; align: "left" | "center" | "right" };
+  style: { fontFamily: "system-sans" | "classic-social" | "tiktok-sans"; fontSize: number; fontWeight: 400 | 600 | 700; color: string; backgroundColor: string | null; strokeColor: string | null; strokeWidth: number; shadow: boolean; align: "left" | "center" | "right" };
   layer: number;
   opacity: number;
   enabled: boolean;
