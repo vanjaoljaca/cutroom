@@ -164,11 +164,12 @@ function imageOverlayFilter(project: VideoProject, interval: ImageOverlayCutInte
   return [scale, composite];
 }
 
-function cutoutOverlayFilter(interval: CutoutProgramInterval, index: number, inputIndex: number, width: number, height: number): string[] {
+export function cutoutOverlayFilter(interval: CutoutProgramInterval, index: number, inputIndex: number, width: number, height: number): string[] {
   const overlay = interval.overlay;
   const boxWidth = even(overlay.layout.width * width);
   const boxHeight = overlay.layout.height === null ? null : even(overlay.layout.height * height);
-  const scaled = overlayScale(`[${inputIndex}:v:0]`, `cutout${index}`, boxWidth, boxHeight, overlay.layout.fit, overlay.opacity).replace("format=rgba,", `setpts=PTS-STARTPTS+${interval.start}/TB,format=rgba,`);
+  const croppedInput = `[${inputIndex}:v:0]setpts=PTS-STARTPTS+${interval.start}/TB,format=rgba,${cropFilter(overlay.crop)}`;
+  const scaled = overlayScale(croppedInput, `cutout${index}`, boxWidth, boxHeight, overlay.layout.fit, overlay.opacity);
   const base = index === 0 ? "cutv" : `composite${index - 1}`;
   const x = Math.round(overlay.layout.x * width);
   const y = Math.round(overlay.layout.y * height);
@@ -394,6 +395,7 @@ import { validateTikTokRestrictions } from "./TikTokExportValidator";
 import { exportFileStem } from "./ExportNaming";
 import { mediaSourcePath } from "./ReferenceMediaCache";
 import { cutoutProgramIntervals, type CutoutProgramInterval } from "../src/CutoutOverlayModel";
+import { cropFilter } from "../src/CutoutCropModel";
 import { videoOverlayProgramIntervals, type VideoOverlayProgramInterval } from "../src/VideoOverlayModel";
 import { textOverlayProgramIntervals, type TextOverlayProgramInterval } from "../src/TextOverlayModel";
 import { wrapTextForCanvas } from "../src/TextLayoutModel";

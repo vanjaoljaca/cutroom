@@ -228,6 +228,7 @@ export type SubjectCutoutOverlay = {
   sourceEnd: number;
   target: { type: "program-clip"; clipId: string; start: number; end: number };
   layout: OverlayLayout;
+  crop: { top: number; right: number; bottom: number; left: number };
   layer: number;
   opacity: number;
   processing: CutoutProcessing;

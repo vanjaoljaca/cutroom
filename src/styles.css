@@ -123,6 +123,13 @@ button:focus-visible,
 .overlay-move-surface { width: 100%; height: 100%; display: block; padding: 0; border: 0; background: transparent; cursor: move; touch-action: none; }
 .overlay-move-surface > img { width: 100%; height: auto; display: block; filter: drop-shadow(0 3px 8px rgb(0 0 0 / 35%)); pointer-events: none; }
 .cutout-overlay-item video, .video-overlay-item video { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; }
+.cutout-overlay-item { overflow: visible; }
+.cutout-viewport { position: relative; overflow: hidden; }
+.cutout-crop-handle { position: absolute; z-index: 3; padding: 0; border: 0; background: #ffd84d; touch-action: none; }
+.cutout-crop-handle.bottom { right: 12%; bottom: -3px; left: 12%; height: 6px; cursor: ns-resize; }
+.cutout-crop-control { position: absolute; top: calc(100% + 10px); left: 0; z-index: 4; width: 190px; padding: 7px 9px; color: #eee; border: 1px solid #555; border-radius: 4px; background: rgb(12 14 12 / 94%); font-size: 11px; cursor: default; }
+.cutout-crop-control output { float: right; color: #ffd84d; }
+.cutout-crop-control input { width: 100%; margin-top: 5px; accent-color: #ffd84d; }
 .image-overlay-item.selected, .cutout-overlay-item.selected, .video-overlay-item.selected { outline: 2px solid #d98cff; outline-offset: 2px; }
 .overlay-resize-handle { width: 16px; height: 16px; position: absolute; right: -8px; bottom: -8px; display: none; padding: 0; border: 2px solid #131513; border-radius: 50%; background: #d98cff; cursor: nwse-resize; touch-action: none; }
 .image-overlay-item.selected .overlay-resize-handle, .cutout-overlay-item.selected .overlay-resize-handle, .video-overlay-item.selected .overlay-resize-handle { display: block; }

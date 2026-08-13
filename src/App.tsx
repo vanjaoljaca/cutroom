@@ -506,6 +506,12 @@ export function App() {
     commitProject({ ...project, cutoutOverlays }, persist);
   }
 
+  function changeCutoutCrop(id: string, crop: CutoutCrop, persist: boolean) {
+    if (!project) return;
+    const cutoutOverlays = project.cutoutOverlays.map((overlay) => overlay.id === id ? { ...overlay, crop } : overlay);
+    commitProject({ ...project, cutoutOverlays }, persist);
+  }
+
   function changeVideoOverlayTiming(id: string, start: number, end: number, persist: boolean) {
     if (!project) return;
     const videoOverlays = project.videoOverlays.map((overlay) => {
@@ -732,13 +738,13 @@ export function App() {
     <canvas className="video-paint-surface" ref={videoCanvasRef} aria-hidden="true" />
     {buffering && <span className="buffering-indicator" role="status">Buffering…</span>}
     {project && workflowStep !== "projects" && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
-    {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} />}
+    {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} onCropChange={changeCutoutCrop} />}
     {project && workflowStep !== "projects" && <VideoOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeVideoOverlayLayout} />}
     {project && workflowStep !== "projects" && <TextOverlayStage project={project} mode={mode} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onPositionChange={changeTextOverlayPosition} />}
     {project && workflowStep === "cut" && <SubtitleStage project={project} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} />}
     {recordingPreviewProject && workflowStep === "projects" && <div className="recording-preview-overlays" inert>
       <EditableOverlayStage project={recordingPreviewProject} mode="cut" sourceTime={currentTime} cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
-      <CutoutOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
+      <CutoutOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} onCropChange={ignoreCutoutCrop} />
       <VideoOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
       <TextOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onPositionChange={ignoreTextPosition} />
     </div>}
@@ -1401,6 +1407,7 @@ const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 
 function ignoreOverlaySelection(_id: string) {}
 function ignoreOverlayLayout(_id: string, _layout: OverlayLayout, _commit: boolean) {}
+function ignoreCutoutCrop(_id: string, _crop: CutoutCrop, _commit: boolean) {}
 function ignoreTextPosition(_id: string, _x: number, _y: number, _persist: boolean) {}
 
 function playbackHealthTitle(health: PlaybackHealth) {
@@ -1434,6 +1441,7 @@ import { shiftSelectedCutOverlays } from "./ProgramDeleteModel";
 import { SourceBrowser } from "./SourceBrowser";
 import { CutoutOverlayStage, CutoutOverlayTracks } from "./CutoutOverlayEditors";
 import { cutoutWithProgramInterval } from "./CutoutOverlayModel";
+import type { CutoutCrop } from "./CutoutCropModel";
 import { VideoOverlayStage, VideoOverlayTracks } from "./VideoOverlayEditors";
 import { videoOverlayWithProgramInterval } from "./VideoOverlayModel";
 import { TextOverlayStage, TextOverlayTracks } from "./TextOverlayEditors";

@@ -3,7 +3,7 @@ export function normalizeVideoProject(project: VideoProject): VideoProject {
   const assets = (library.assets || []).map((asset) => ({ ...asset, source: asset.source || emptySource }));
   const bundles = library.bundles || [];
   const overlays = (project.overlays || []).map((overlay) => ({ ...overlay, bundleId: overlay.bundleId || null }));
-  const cutoutOverlays = project.cutoutOverlays || [];
+  const cutoutOverlays = (project.cutoutOverlays || []).map((overlay) => ({ ...overlay, crop: normalizedCutoutCrop(overlay.crop) }));
   const videoOverlays = project.videoOverlays || [];
   const subtitleState = normalizeSubtitleTrack(project);
   const textOverlays = subtitleState.textOverlays;
@@ -195,6 +195,7 @@ function validateCutoutOverlay(project: VideoProject, overlay: SubjectCutoutOver
   assert(overlay.target.start >= 0 && overlay.target.end > overlay.target.start && overlay.target.end <= target!.sourceEnd - target!.sourceStart + 0.001, `Invalid cutout target interval: ${overlay.id}`);
   assert(overlay.target.end - overlay.target.start <= overlay.sourceEnd - overlay.sourceStart + 0.001, `Cutout target exceeds source duration: ${overlay.id}`);
   assert(overlay.layout.x >= 0 && overlay.layout.x <= 1 && overlay.layout.y >= 0 && overlay.layout.y <= 1 && overlay.layout.width > 0 && overlay.layout.width <= 1, `Invalid cutout layout: ${overlay.id}`);
+  assert(validCutoutCrop(overlay.crop), `Invalid cutout crop: ${overlay.id}`);
   assert(overlay.opacity >= 0 && overlay.opacity <= 1 && Number.isInteger(overlay.layer), `Invalid cutout layer: ${overlay.id}`);
   validateCutoutProcessing(overlay);
 }
@@ -346,6 +347,7 @@ function normalizeMediaLibrary(library: MediaLibrary): MediaLibrary {
 const emptySource = { sourceUrl: null, attribution: null, license: null };
 
 import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, MediaTranscriptReference, OverlayLayout, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, SubtitleCue, SubtitleStyle, TextOverlay, VideoMediaMetadata, VideoMediaSource, VideoOverlay, VideoProject } from "../src/analysis-model";
+import { normalizedCutoutCrop, validCutoutCrop } from "../src/CutoutCropModel";
 import { createProgramTimeline } from "../src/ProgramTimelineModel";
 import { recordingPlanForProject } from "../src/RecordingPlanModel";
 import { normalizeSubtitleTrack } from "../src/SubtitleModel";

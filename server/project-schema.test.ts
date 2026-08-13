@@ -59,10 +59,19 @@ describe("video project schema", () => {
 
   it("accepts a ready subject cutout with deterministic USB-relative artifacts", () => {
     const project = fixtureProject();
-    project.cutoutOverlays.push({ id: "cutout.person", kind: "subject-cutout", label: "Me", sourceId: "media.primary", sourceStart: 1, sourceEnd: 1.5, target: { type: "program-clip", clipId: "clip.scene.scene", start: 0.1, end: 0.6 }, layout: { anchor: "top-left", x: 0.6, y: 0.5, width: 0.3, height: null, fit: "contain", placementIntent: "explicit" }, layer: 20, opacity: 1, processing: { provider: "rembg-u2net-human", providerVersion: "1.0.0", status: "ready", previewPath: "derived/cutouts/cutout.person/preview.webm", renderPath: "derived/cutouts/cutout.person/render.mov", recipePath: "derived/cutouts/cutout.person/recipe.json", error: null }, createdAt: "" });
+    project.cutoutOverlays.push({ id: "cutout.person", kind: "subject-cutout", label: "Me", sourceId: "media.primary", sourceStart: 1, sourceEnd: 1.5, target: { type: "program-clip", clipId: "clip.scene.scene", start: 0.1, end: 0.6 }, layout: { anchor: "top-left", x: 0.6, y: 0.5, width: 0.3, height: null, fit: "contain", placementIntent: "explicit" }, crop: { top: 0, right: 0, bottom: 0, left: 0 }, layer: 20, opacity: 1, processing: { provider: "rembg-u2net-human", providerVersion: "1.0.0", status: "ready", previewPath: "derived/cutouts/cutout.person/preview.webm", renderPath: "derived/cutouts/cutout.person/render.mov", recipePath: "derived/cutouts/cutout.person/recipe.json", error: null }, createdAt: "" });
     expect(validateVideoProject(project).cutoutOverlays).toHaveLength(1);
     project.cutoutOverlays[0].processing.renderPath = "../outside.mov";
     expect(() => validateVideoProject(project)).toThrow("Unsafe cutout render path");
+  });
+
+  it("normalizes legacy cutouts and rejects an empty crop", () => {
+    const project = fixtureProject();
+    project.cutoutOverlays.push({ id: "cutout.person", kind: "subject-cutout", label: "Me", sourceId: "media.primary", sourceStart: 1, sourceEnd: 1.5, target: { type: "program-clip", clipId: "clip.scene.scene", start: 0.1, end: 0.6 }, layout: { anchor: "top-left", x: 0.6, y: 0.5, width: 0.3, height: null, fit: "contain", placementIntent: "explicit" }, crop: { top: 0, right: 0, bottom: 0, left: 0 }, layer: 20, opacity: 1, processing: { provider: "rembg-u2net-human", providerVersion: "1.0.0", status: "ready", previewPath: "derived/cutouts/cutout.person/preview.webm", renderPath: "derived/cutouts/cutout.person/render.mov", recipePath: "derived/cutouts/cutout.person/recipe.json", error: null }, createdAt: "" });
+    delete (project.cutoutOverlays[0] as unknown as { crop?: unknown }).crop;
+    expect(validateVideoProject(project).cutoutOverlays[0].crop).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+    project.cutoutOverlays[0].crop = { top: 0.5, right: 0, bottom: 0.5, left: 0 };
+    expect(() => validateVideoProject(project)).toThrow("Invalid cutout crop");
   });
 
   it("validates durable deleted program segments and their editorial snapshot", () => {

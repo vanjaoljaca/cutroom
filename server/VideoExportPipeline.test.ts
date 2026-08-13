@@ -38,6 +38,13 @@ describe("video export quality contract", () => {
     expect(projectSnapshotHash(base)).not.toBe(projectSnapshotHash(changed));
   });
 
+  it("crops a cutout before fitting it into the persisted placement width", () => {
+    const overlay = { layout: { x: 0.1, y: 0.2, width: 0.3, height: null, fit: "contain" }, crop: { top: 0, right: 0, bottom: 0.2, left: 0 }, opacity: 1 };
+    const filters = cutoutOverlayFilter({ overlay, start: 2, end: 4 } as any, 0, 3, 1080, 1920);
+    expect(filters[0]).toContain("crop=trunc(iw*1/2)*2:trunc(ih*0.8/2)*2");
+    expect(filters[0].indexOf("crop=")).toBeLessThan(filters[0].indexOf("scale=324:-2"));
+  });
+
   it("wraps long Unicode titles inside the export max width with explicit box padding", () => {
     const overlay = { text: "Demonstration incoming…", style: { fontSize: 64, align: "center", strokeColor: null, backgroundColor: "#111111", shadow: false, color: "#FFFFFF" }, layout: { x: 0.5, y: 0.58, anchor: "center", maxWidth: 0.82 }, opacity: 1 };
     const filter = textOverlayFilter({ overlay, start: 0, end: 2 } as any, 0, "video", 720, 1280);
@@ -47,4 +54,4 @@ describe("video export quality contract", () => {
 });
 
 import type { VideoProject } from "../src/analysis-model";
-import { buildExportCommand, hardwareReviewProfile, projectSnapshotHash, textOverlayFilter, validateCadence, videoEncodingArgs } from "./VideoExportPipeline";
+import { buildExportCommand, cutoutOverlayFilter, hardwareReviewProfile, projectSnapshotHash, textOverlayFilter, validateCadence, videoEncodingArgs } from "./VideoExportPipeline";
