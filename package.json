@@ -30,6 +30,8 @@
     "program:source": "vite-node scripts/SetProgramSourceClip.ts",
     "raw-media": "vite-node scripts/RawMedia.ts",
     "video:export": "vite-node scripts/ExportVideo.ts",
+    "review:serve-lan": "vite-node scripts/ServeLanReview.ts",
+    "review:build": "vite-node scripts/BuildLanReview.ts",
     "media:reference:add": "vite-node scripts/AddReferenceMedia.ts",
     "media:reference:attach-cache": "vite-node scripts/AttachReferenceCache.ts",
     "media:reference:regenerate": "vite-node scripts/RegenerateReferenceMedia.ts",

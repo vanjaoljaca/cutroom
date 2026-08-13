@@ -258,6 +258,7 @@ function validateExportPreset(receipt: ExportReceipt) {
   assert(receipt.preset !== "original-format" || (receipt.codec.video === "hevc" && receipt.container === "mov" && receipt.strategy === "stream-copy"), "Original-format export must preserve HEVC/MOV by stream copy.");
   assert(receipt.preset !== "tiktok-60" || Boolean(receipt.codec.video === "h264" && receipt.container === "mp4" && receipt.strategy === "full-transcode" && receipt.qualityProfile), "Invalid TikTok export receipt.");
   assert(receipt.preset !== "tiktok-software" || Boolean(receipt.codec.video === "h264" && receipt.container === "mp4" && receipt.strategy === "full-transcode" && receipt.qualityProfile?.encoder === "libx264"), "Invalid software export receipt.");
+  assert(receipt.preset !== "lan-review" || Boolean(receipt.codec.video === "h264" && receipt.container === "mp4" && receipt.strategy === "full-transcode" && receipt.qualityProfile?.encoder === "h264_videotoolbox"), "Invalid LAN review receipt.");
 }
 
 function validateBundles(project: VideoProject) {

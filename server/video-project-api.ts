@@ -90,7 +90,7 @@ async function trashStoredProject(id: string, request: IncomingMessage) {
 async function exportPreset(request: IncomingMessage): Promise<ExportPreset> {
   const body = await readBody(request);
   const preset = body ? (JSON.parse(body) as { preset?: string }).preset : "original-format";
-  if (preset !== "original-format" && preset !== "tiktok-60" && preset !== "tiktok-software") throw new Error(`Unsupported export preset: ${preset}`);
+  if (preset !== "original-format" && preset !== "tiktok-60" && preset !== "tiktok-software" && preset !== "lan-review") throw new Error(`Unsupported export preset: ${preset}`);
   return preset;
 }
 

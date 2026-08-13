@@ -334,8 +334,8 @@ export type ExportReceipt = {
 };
 
 export type ExportCadence = { averageFps: number; reportedFps: number; frameCount: number };
-export type ExportQualityProfile = { encoder: "libx264" | "h264_videotoolbox"; preset: "slow" | "veryfast" | "hardware"; crf: 14 | 18 | null; profile: "high"; level: "4.2"; pixelFormat: "yuv420p"; color: "bt709"; fpsMode: "cfr-60"; audio: "aac-lc-48k-256k" };
-export type ExportPreset = "original-format" | "tiktok-60" | "tiktok-software";
+export type ExportQualityProfile = { encoder: "libx264" | "h264_videotoolbox"; preset: "slow" | "veryfast" | "hardware"; crf: 14 | 18 | null; profile: "high"; level: "4.2"; pixelFormat: "yuv420p"; color: "bt709"; fpsMode: "cfr-60" | "cfr-30"; audio: "aac-lc-48k-256k" };
+export type ExportPreset = "original-format" | "tiktok-60" | "tiktok-software" | "lan-review";
 export type ExportStrategy = "stream-copy" | "partial-transcode" | "full-transcode";
 
 export type AssetLibrary = {

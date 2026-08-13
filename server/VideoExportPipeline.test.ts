@@ -13,6 +13,12 @@ describe("video export quality contract", () => {
     expect(args).not.toContain("30");
   });
 
+  it("uses a lightweight 30 fps hardware profile for LAN review", () => {
+    const args = videoEncodingArgs({ ...hardwareReviewProfile, fpsMode: "cfr-30" }, "lan-review");
+    expect(args).toEqual(expect.arrayContaining(["h264_videotoolbox", "6M", "30", "cfr", "bt709"]));
+    expect(args).not.toContain("-allow_sw");
+  });
+
   it("accepts the source cadence and rejects silent 60-to-30 fps regression", () => {
     expect(() => validateCadence(59.996, 59.998)).not.toThrow();
     expect(() => validateCadence(59.996, 30)).toThrow("source cadence 59.996 fps became 30.000 fps");

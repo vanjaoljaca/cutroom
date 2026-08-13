@@ -2,7 +2,7 @@ export function exportFileStem(input: ExportFileNameInput): string {
   const title = exportProjectTitle(input.projectTitle);
   const timestamp = localTimestamp(input.createdAt);
   const version = String(input.exportVersion).padStart(3, "0");
-  const preset = input.preset === "tiktok-60" ? "TikTok Hardware" : input.preset === "tiktok-software" ? "TikTok Software" : "Original";
+  const preset = input.preset === "tiktok-60" ? "TikTok Hardware" : input.preset === "tiktok-software" ? "TikTok Software" : input.preset === "lan-review" ? "LAN Review" : "Original";
   return `${title} - ${timestamp} - v${version} - ${preset}`;
 }
 

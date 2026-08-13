@@ -9,12 +9,12 @@ export async function renderProjectVideo(projectId: string, options: RenderOptio
 }
 
 async function renderTikTok(project: VideoProject, cuts: SourceRange[], options: RenderOptions): Promise<ExportReceipt> {
-  const preset = options.preset === "tiktok-software" ? "tiktok-software" : "tiktok-60";
+  const preset = options.preset === "tiktok-software" ? "tiktok-software" : options.preset === "lan-review" ? "lan-review" : "tiktok-60";
   const snapshotHash = projectSnapshotHash(project);
   const jobId = options.jobId || `export-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const paths = await prepareExportPaths(project, preset, "mp4");
   const source = await probeMedia(primarySourcePath(project));
-  const profile = preset === "tiktok-software" ? qualityProfile : await requireHardwareEncodingProfile();
+  const profile = preset === "tiktok-software" ? qualityProfile : preset === "lan-review" ? { ...await requireHardwareEncodingProfile(), fpsMode: "cfr-30" as const } : await requireHardwareEncodingProfile();
   log("export_started", { projectId: project.id, jobId, preset, duration: cutDuration(cuts), output: paths.output });
   try {
     const receipt = await renderTikTokAttempt(project, cuts, source, paths, jobId, snapshotHash, preset, profile, options);
@@ -28,8 +28,8 @@ async function renderTikTok(project: VideoProject, cuts: SourceRange[], options:
   }
 }
 
-async function renderTikTokAttempt(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: "tiktok-60" | "tiktok-software", profile: ExportQualityProfile, options: RenderOptions) {
-  await runFfmpeg(buildExportCommand(project, cuts, source, paths.partial, profile), cutDuration(cuts), options);
+async function renderTikTokAttempt(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: "tiktok-60" | "tiktok-software" | "lan-review", profile: ExportQualityProfile, options: RenderOptions) {
+  await runFfmpeg(buildExportCommand(project, cuts, source, paths.partial, profile, preset), cutDuration(cuts), options);
   return finalizeTikTokExport(project, cuts, source, paths, jobId, snapshotHash, preset, profile);
 }
 
@@ -91,7 +91,7 @@ async function probeKeyframes(path: string): Promise<number[]> {
   return stdout.split(/\s+/).map((value) => Number.parseFloat(value)).filter(Number.isFinite);
 }
 
-function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: string, profile: ExportQualityProfile): string[] {
+function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: string, profile: ExportQualityProfile, preset: ExportPreset = "tiktok-60"): string[] {
   const overlays = editorialOverlays(project, cuts);
   assertCutoutsReady(overlays);
   const args = ["-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-y"];
@@ -100,12 +100,13 @@ function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: 
   const inputIndexes = cuts.map((cut) => inputPaths.indexOf(programSourcePath(project, cut)));
   overlays.forEach((item) => addEditorialInput(args, project, item, source.averageFrameRate));
   const graph = filterGraph(project, cuts, inputIndexes, overlays, inputPaths.length, source.width, source.height);
-  return [...args, "-filter_complex", graph, "-map", "[exportv]", "-map", "[exporta]", ...videoEncodingArgs(profile), "-c:a", "aac", "-profile:a", "aac_low", "-ar", "48000", "-ac", "2", "-b:a", "256k", "-movflags", "+faststart", output];
+  return [...args, "-filter_complex", graph, "-map", "[exportv]", "-map", "[exporta]", ...videoEncodingArgs(profile, preset), "-c:a", "aac", "-profile:a", "aac_low", "-ar", "48000", "-ac", "2", "-b:a", preset === "lan-review" ? "160k" : "256k", "-movflags", "+faststart", output];
 }
 
-export function videoEncodingArgs(profile: ExportQualityProfile = qualityProfile): string[] {
-  const codec = profile.encoder === "h264_videotoolbox" ? ["-c:v", profile.encoder, "-b:v", "24M", "-maxrate", "32M", "-bufsize", "64M"] : ["-c:v", profile.encoder, "-preset", profile.preset, "-crf", String(profile.crf)];
-  return [...codec, "-profile:v", "high", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-r", "60", "-fps_mode:v", "cfr", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"];
+export function videoEncodingArgs(profile: ExportQualityProfile = qualityProfile, preset: ExportPreset = "tiktok-60"): string[] {
+  const review = preset === "lan-review";
+  const codec = profile.encoder === "h264_videotoolbox" ? ["-c:v", profile.encoder, "-b:v", review ? "6M" : "24M", "-maxrate", review ? "8M" : "32M", "-bufsize", review ? "16M" : "64M"] : ["-c:v", profile.encoder, "-preset", profile.preset, "-crf", String(profile.crf)];
+  return [...codec, "-profile:v", "high", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-r", review ? "30" : "60", "-fps_mode:v", "cfr", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"];
 }
 
 async function requireHardwareEncodingProfile(): Promise<ExportQualityProfile> {
@@ -265,10 +266,17 @@ function parseProgress(chunk: string, duration: number, startedAt: number, onPro
   onProgress?.({ progress, processedSeconds, totalSeconds: duration, etaSeconds });
 }
 
-async function finalizeTikTokExport(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: "tiktok-60" | "tiktok-software", profile: ExportQualityProfile): Promise<ExportReceipt> {
+async function finalizeTikTokExport(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: "tiktok-60" | "tiktok-software" | "lan-review", profile: ExportQualityProfile): Promise<ExportReceipt> {
   const probe = await probeMedia(paths.partial);
-  validateTikTokMedia(probe, source, cutDuration(cuts), (await stat(paths.partial)).size);
+  if (preset === "lan-review") validateReviewMedia(probe, cutDuration(cuts));
+  else validateTikTokMedia(probe, source, cutDuration(cuts), (await stat(paths.partial)).size);
   return finishExport(project, cuts, source, probe, paths, jobId, snapshotHash, preset, "full-transcode", profile, null);
+}
+
+function validateReviewMedia(output: MediaProbe, expectedDuration: number) {
+  if (output.videoCodec !== "h264" || output.audioCodec !== "aac") throw new Error("LAN review export must contain H.264 video and AAC audio.");
+  if (Math.abs(output.averageFrameRate - 30) > 0.05) throw new Error(`LAN review export cadence is ${output.averageFrameRate}, expected 30 fps.`);
+  if (Math.abs(output.duration - expectedDuration) > 0.2) throw new Error(`LAN review export duration is ${output.duration}, expected ${expectedDuration}.`);
 }
 
 async function finishExport(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: ExportPreset, strategy: ExportStrategy, profile: ExportQualityProfile | null, plan: SourcePreservingPlan | null): Promise<ExportReceipt> {
