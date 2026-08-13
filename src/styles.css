@@ -127,7 +127,7 @@ button:focus-visible,
 .cutout-viewport { position: relative; overflow: hidden; }
 .cutout-crop-handle { position: absolute; z-index: 3; padding: 0; border: 0; background: #ffd84d; touch-action: none; }
 .cutout-crop-handle.bottom { right: 12%; bottom: -3px; left: 12%; height: 6px; cursor: ns-resize; }
-.cutout-crop-control { position: absolute; top: calc(100% + 10px); left: 0; z-index: 4; width: 190px; padding: 7px 9px; color: #eee; border: 1px solid #555; border-radius: 4px; background: rgb(12 14 12 / 94%); font-size: 11px; cursor: default; }
+.cutout-crop-control { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 4; width: 190px; padding: 7px 9px; color: #eee; border: 1px solid #555; border-radius: 4px; background: rgb(12 14 12 / 94%); font-size: 11px; cursor: default; }
 .cutout-crop-control output { float: right; color: #ffd84d; }
 .cutout-crop-control input { width: 100%; margin-top: 5px; accent-color: #ffd84d; }
 .image-overlay-item.selected, .cutout-overlay-item.selected, .video-overlay-item.selected { outline: 2px solid #d98cff; outline-offset: 2px; }
