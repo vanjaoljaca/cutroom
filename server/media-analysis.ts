@@ -30,7 +30,19 @@ async function transcribe(audio: string, output: string) {
 async function buildAnalysis(source: string, transcriptPath: string, job: string) {
   const transcript = JSON.parse(await readFile(transcriptPath, "utf8")) as FluidTranscript;
   const duration = await probeDuration(source);
+  await normalizeTranscriptDuration(transcriptPath, transcript, duration);
   return { ...interpretDirectorTrack(transcript, duration), artifactsDirectory: job };
+}
+
+export async function normalizeTranscriptDuration(path: string, transcript: FluidTranscript, duration: number) {
+  if (!(duration > 0) || !Number.isFinite(duration)) throw new Error(`Invalid source duration: ${duration}`);
+  if (transcript.durationSeconds === duration) return transcript;
+  const normalized = { ...transcript, durationSeconds: duration };
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(normalized, null, 2)}\n`);
+  await rename(temporary, path);
+  log("transcript_duration_normalized", { path, providerDuration: transcript.durationSeconds ?? null, sourceDuration: duration });
+  return normalized;
 }
 
 async function probeDuration(input: string): Promise<number> {
@@ -51,11 +63,11 @@ const modelPath = transcriptionModelPath;
 const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
 const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
 
-type FluidTranscript = { text: string; wordTimings: import("../src/analysis-model").WordTiming[] };
+type FluidTranscript = { text: string; wordTimings: import("../src/analysis-model").WordTiming[]; durationSeconds?: number };
 
 import { randomUUID } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
-import { access, mkdir, readFile, statfs } from "node:fs/promises";
+import { access, mkdir, readFile, rename, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AnalysisResult } from "../src/analysis-model";
