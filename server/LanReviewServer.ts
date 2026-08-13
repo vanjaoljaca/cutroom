@@ -7,6 +7,14 @@ export async function startLanReviewServer() {
   return server;
 }
 
+export async function serveLanReviewRequest(request: IncomingMessage, response: ServerResponse) {
+  return serveReview(await currentReviewDirectory(), request, response);
+}
+
+export function isPhoneReviewHost(host: string | undefined) {
+  return host?.split(":", 1)[0].toLowerCase() === "cutroom.local";
+}
+
 async function serveReview(directory: string, request: IncomingMessage, response: ServerResponse) {
   const pathname = decodeURIComponent(new URL(request.url || "/", "http://cutroom-review").pathname);
   if (pathname === "/") return serveFeed(directory, request, response);
