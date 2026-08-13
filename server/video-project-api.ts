@@ -19,6 +19,7 @@ export function handleVideoProjectRequest(request: IncomingMessage, response: Se
 async function handleProjectRequest(route: ProjectRoute, request: IncomingMessage, response: ServerResponse) {
   try {
     if (route.action === "catalog" && request.method === "GET") return sendJson(response, 200, await listProjects());
+    if (route.action === "references" && request.method === "GET") return sendJson(response, 200, await readReferenceMediaLibrary());
     if (route.action === "raw-media" && request.method === "GET") return sendJson(response, 200, await readRawMediaLibrary());
     if (route.action === "raw-media" && request.method === "POST") return sendJson(response, 201, await ingestRawMedia((JSON.parse(await readBody(request)) as { path: string }).path));
     if (route.action === "raw-media-attach" && request.method === "POST") return sendJson(response, 200, await attachRawMediaInput(route.id, request));
@@ -95,7 +96,8 @@ async function exportPreset(request: IncomingMessage): Promise<ExportPreset> {
 }
 
 async function addReferenceMedia(projectId: string, request: IncomingMessage) {
-  const input = JSON.parse(await readBody(request)) as { url?: string; label?: string; cachePath?: string; transcriptPath?: string };
+  const input = JSON.parse(await readBody(request)) as { referenceId?: string; revision?: number; url?: string; label?: string; cachePath?: string; transcriptPath?: string };
+  if (input.referenceId && Number.isInteger(input.revision)) return attachLibraryReference({ projectId, referenceId: input.referenceId, revision: input.revision! });
   if (typeof input.url !== "string" || typeof input.label !== "string") throw new Error("Reference URL and label are required.");
   if (input.cachePath) return attachCachedRemoteReference({ projectId, url: input.url, label: input.label, path: input.cachePath, transcriptPath: input.transcriptPath });
   return addRemoteReference({ projectId, url: input.url, label: input.label });
@@ -170,6 +172,7 @@ async function serveVideoPath(path: string, request: IncomingMessage, response: 
 function parseRoute(rawUrl = "/"): ProjectRoute | null {
   const path = new URL(rawUrl, "http://cutroom.local").pathname;
   if (path === "/api/projects") return { id: "", action: "catalog", itemId: null };
+  if (path === "/api/references") return { id: "", action: "references", itemId: null };
   if (path === "/api/raw-media") return { id: "", action: "raw-media", itemId: null };
   const rawMedia = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/raw(?:\/(raw\.[a-f0-9]{16}))?$/);
   if (rawMedia) return { id: rawMedia[1], action: "raw-media-attach", itemId: rawMedia[2] || null };
@@ -235,7 +238,7 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: "cutroom-projects", event, ...details }));
 }
 
-type ProjectAction = "catalog" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "subtitles" | "subtitle-cue" | "exports" | "export-job" | "export-file";
+type ProjectAction = "catalog" | "references" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "subtitles" | "subtitle-cue" | "exports" | "export-job" | "export-file";
 type ProjectRoute = { id: string; action: ProjectAction; itemId: string | null };
 type ByteRange = { start: number; end: number };
 
@@ -257,3 +260,4 @@ import { listProjects, renameProject, trashProject } from "./ProjectCatalog";
 import { cancelCutoutJob, durableCutoutJobStatus, startCutoutJob } from "./CutoutJobs";
 import { attachRawMedia, detachRawMedia, ingestRawMedia, readRawMediaLibrary } from "./RawMediaLibrary";
 import { editSubtitle, generateSubtitles, importSubtitles, previewGeneratedSubtitles, removeSubtitle, restoreSubtitle, type SubtitleEditInput } from "./SubtitleService";
+import { attachLibraryReference, readReferenceMediaLibrary } from "./ReferenceMediaLibrary";

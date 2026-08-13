@@ -8,6 +8,7 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
   const [loop, setLoop] = useState(true);
   const [waveform, setWaveform] = useState<number[]>([]);
   const [words, setWords] = useState<SourceTranscriptWord[]>([]);
+  const [library, setLibrary] = useState<ReferenceMediaRecord[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const source = project.mediaLibrary.sources.find((candidate) => candidate.id === sourceId) || project.mediaLibrary.sources[0];
   const selectedClip = project.programTimeline.clips.find((clip) => clip.id === selectedClipId);
@@ -15,6 +16,7 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
   const mediaUrl = `/api/projects/${project.id}/media/${source.id}`;
   useSourceBrowserDismiss(open, onClose);
   useSourceEvidence(open, project.id, source, mediaUrl, setWaveform, setWords);
+  useReferenceLibrary(open, project, setLibrary);
   if (!open) return null;
 
   function loaded() {
@@ -52,6 +54,7 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
 
   return <div className="source-browser-modal"><button className="source-browser-scrim" aria-label="Dismiss add media" onClick={onClose} /><section className="source-browser" role="dialog" aria-modal="true" aria-label="Add media">
     <header><div><strong>Add media</strong><span>Choose an exact source interval, then add or replace a program clip.</span></div><button aria-label="Close add media" title="Close" onClick={onClose}><X size={17} /></button></header>
+    <ReferenceLibrary records={library} project={project} />
     <SourceTabs project={project} sourceId={source.id} onChange={changeSource} />
     <div className="source-workspace">
       <video ref={videoRef} src={mediaUrl} controls playsInline onLoadedMetadata={loaded} onTimeUpdate={timeUpdate} />
@@ -70,6 +73,23 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
       </div>
     </div>
   </section></div>;
+}
+
+function ReferenceLibrary({ records, project }: ReferenceLibraryProps) {
+  const [query, setQuery] = useState("");
+  const available = records.filter((record) => !project.mediaLibrary.sources.some((source) => source.id === record.source.id));
+  const visible = available.filter((record) => `${record.source.label} ${record.source.origin.type === "remote" ? record.source.origin.url : ""}`.toLowerCase().includes(query.toLowerCase()));
+  return <section className="reference-library" aria-label="References"><strong>References</strong><input aria-label="Search references" placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} />{visible.length ? visible.map((record) => <button key={record.id} onClick={() => void attachReference(project, record.id)}><span>{record.source.label}</span><small>{record.cacheAvailable ? "Ready" : "Download needed"} · used in {record.projectIds.length} project{record.projectIds.length === 1 ? "" : "s"}</small></button>) : <span>{available.length ? "No matching references." : "All saved references are already attached."}</span>}</section>;
+}
+
+async function attachReference(project: VideoProject, referenceId: string) {
+  const response = await fetch(`/api/projects/${project.id}/media/references`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ referenceId, revision: project.revision }) });
+  if (!response.ok) throw new Error((await response.json() as { error?: string }).error || `Reference attach HTTP ${response.status}`);
+  window.location.reload();
+}
+
+function useReferenceLibrary(open: boolean, project: VideoProject, setLibrary: Dispatch<SetStateAction<ReferenceMediaRecord[]>>) {
+  useEffect(() => { if (!open) return; let cancelled = false; fetch("/api/references").then((response) => response.ok ? response.json() : Promise.reject(new Error(`References HTTP ${response.status}`))).then((value: ReferenceMediaLibrary) => { if (!cancelled) setLibrary(value.records); }).catch((error) => logError("reference_library_failed", error)); return () => { cancelled = true; }; }, [open, project.revision, setLibrary]);
 }
 
 function SourceTabs({ project, sourceId, onChange }: SourceTabsProps) {
@@ -122,6 +142,7 @@ const minimumDuration = 0.08;
 
 type SourcePlacement = "start" | "before" | "after" | "end";
 type SourceBrowserProps = { project: VideoProject; open: boolean; selectedClipId: string | null; cutoutStatus: CutoutJobStatus | null; onClose: () => void; onInsert: (source: VideoMediaSource, start: number, end: number, index: number) => void; onReplace: (source: VideoMediaSource, start: number, end: number, clipId: string) => void; onCreateCutout: (source: VideoMediaSource, start: number, end: number, targetClipId: string) => void; onCancelCutout: () => void };
+type ReferenceLibraryProps = { records: ReferenceMediaRecord[]; project: VideoProject };
 type SourceTabsProps = { project: VideoProject; sourceId: string; onChange: (sourceId: string) => void };
 type SourceRangeEditorProps = { duration: number; fps: number; interval: SourceInterval; waveform: number[]; onChange: Dispatch<SetStateAction<SourceInterval>> };
 type BoundaryFieldProps = { label: "In" | "Out"; value: number; onChange: (value: number) => void; onNudge: (frames: number) => void };
@@ -129,7 +150,7 @@ type SourceTranscriptProps = { words: SourceTranscriptWord[]; interval: SourceIn
 
 import { PersonSimple, Play, Plus, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import type { ProgramClip, VideoMediaSource, VideoProject } from "./analysis-model";
+import type { ProgramClip, ReferenceMediaLibrary, ReferenceMediaRecord, VideoMediaSource, VideoProject } from "./analysis-model";
 import { createAudioPeaks } from "./audio-waveform";
 import type { CutoutJobStatus } from "./CutoutModel";
 import { logError } from "./structured-log";

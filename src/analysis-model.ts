@@ -144,6 +144,15 @@ export type MediaTranscriptReference = {
 
 export type RawMediaLibrary = { version: 1; records: RawMediaRecord[] };
 
+export type ReferenceMediaLibrary = { version: 1; records: ReferenceMediaRecord[] };
+
+export type ReferenceMediaRecord = {
+  id: string;
+  source: VideoMediaSource;
+  projectIds: string[];
+  cacheAvailable: boolean;
+};
+
 export type RawMediaRecord = {
   id: string;
   sha256: string;
