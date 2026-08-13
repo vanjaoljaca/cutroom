@@ -3,11 +3,13 @@ process.title = "Cutroom";
 async function main() {
   const server = createServer(serve);
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); });
-  log("service_started", { pid: process.pid, sourceRevision, clientRoot, url: "http://cutroom" });
-  registerShutdown(server);
+  const reviewServer = await startLanReviewServer();
+  log("service_started", { pid: process.pid, sourceRevision, clientRoot, url: "http://cutroom", reviewPort: 4174 });
+  registerShutdown([server, reviewServer]);
 }
 
 async function serve(request: IncomingMessage, response: ServerResponse) {
+  if (request.url === "/api/service/status") return send(response, 200, "application/json", JSON.stringify({ service: serviceLabel, sourceRevision, pid: process.pid }));
   if (handleVideoProjectRequest(request, response)) return;
   try { await serveClient(request, response); }
   catch (error) { log("client_request_failed", { path: request.url, error: error instanceof Error ? error.message : String(error) }); send(response, 500, "text/plain", "Cutroom failed to load."); }
@@ -40,11 +42,13 @@ function contentType(path: string) {
   return extension === ".html" ? "text/html; charset=utf-8" : extension === ".js" ? "text/javascript; charset=utf-8" : extension === ".css" ? "text/css; charset=utf-8" : extension === ".svg" ? "image/svg+xml" : extension === ".png" ? "image/png" : "application/octet-stream";
 }
 
-function registerShutdown(server: HttpServer) {
-  const stop = (signal: NodeJS.Signals) => { log("service_stopping", { pid: process.pid, signal }); server.close(() => process.exit(0)); };
+function registerShutdown(servers: HttpServer[]) {
+  const stop = (signal: NodeJS.Signals) => { log("service_stopping", { pid: process.pid, signal }); Promise.all(servers.map(close)).then(() => process.exit(0)); };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 }
+
+function close(server: HttpServer) { return new Promise<void>((resolve) => server.close(() => resolve())); }
 
 function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: serviceLabel, event, service: serviceLabel, sourceRevision, ...details }));
@@ -66,3 +70,4 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleVideoProjectRequest } from "../server/video-project-api";
+import { startLanReviewServer } from "../server/LanReviewServer";

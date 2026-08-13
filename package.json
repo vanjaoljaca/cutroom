@@ -43,6 +43,7 @@
     "project:rename": "vite-node scripts/RenameProject.ts",
     "project:trash": "vite-node scripts/TrashProject.ts",
     "service:start": "node dist/server/CutroomServer.mjs",
+    "service:update": "npm run build && vite-node scripts/UpdateCutroomService.ts",
     "typecheck": "tsc --noEmit",
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },

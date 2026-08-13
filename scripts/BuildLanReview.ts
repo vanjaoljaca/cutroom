@@ -16,8 +16,8 @@ function validate(manifest: ReviewManifest) {
 }
 
 function page(manifest: ReviewManifest) {
-  const cards = manifest.items.map((item) => `<article><h2>${escape(item.title)}</h2><p>${format(item.durationSeconds)}</p><video controls playsinline preload="metadata" src="./${escape(item.media)}"></video><a href="http://cutroom/project/${escape(item.projectId)}">Open desktop project</a></article>`).join("");
-  return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(manifest.title)}</title><style>${styles}</style><main><h1>${escape(manifest.title)}</h1>${cards}</main>`;
+  const proposals = manifest.items.map((item, index) => `<section><video controls playsinline preload="metadata" src="./${escape(item.media)}"></video><div><strong>${escape(item.title)}</strong><span>${format(item.durationSeconds)} · ${index + 1}/${manifest.items.length}</span><a href="http://cutroom/project/${escape(item.projectId)}">Edit on desktop</a></div></section>`).join("");
+  return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${escape(manifest.title)}</title><style>${styles}</style><main>${proposals}</main>`;
 }
 
 function escape(value: string) { return value.replace(/[&<>"']/g, (character) => entities[character]!); }
@@ -25,7 +25,7 @@ function format(seconds: number) { return `${Math.floor(seconds / 60)}:${String(
 function requiredArgument(name: string) { const index = process.argv.indexOf(name); const value = index >= 0 ? process.argv[index + 1] : null; if (!value) throw new Error(`Missing ${name}`); return value; }
 function log(event: string, details: Record<string, unknown>) { console.info(JSON.stringify({ scope: "cutroom-lan-review", event, ...details })); }
 
-const styles = `*{box-sizing:border-box}body{margin:0;background:#0e100f;color:#f4f5f2;font:16px system-ui}main{width:min(100%,720px);margin:auto;padding:20px}h1{font-size:28px}article{margin:0 0 28px;padding:16px;background:#181b19;border:1px solid #343936;border-radius:12px}h2{margin:0;font-size:20px}p{margin:4px 0 12px;color:#aeb4b0}video{display:block;width:100%;max-height:72vh;background:#000;border-radius:8px}a{display:inline-block;margin-top:12px;color:#71d6b6}`;
+const styles = `*{box-sizing:border-box}html,body,main{margin:0;width:100%;height:100%;background:#000;color:#fff;font:16px system-ui}main{overflow-y:auto;scroll-snap-type:y mandatory}section{position:relative;width:100%;height:100svh;scroll-snap-align:start;scroll-snap-stop:always}video{width:100%;height:100%;object-fit:contain}section div{position:absolute;left:16px;right:16px;bottom:max(64px,calc(env(safe-area-inset-bottom) + 20px));display:grid;gap:4px;text-shadow:0 1px 4px #000;pointer-events:none}strong{font-size:17px}span,a{font-size:13px;color:#fff}a{justify-self:start;pointer-events:auto}`;
 const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" };
 
 type ReviewManifest = { version: 1; title: string; items: Array<{ projectId: string; title: string; durationSeconds: number; media: string }> };
