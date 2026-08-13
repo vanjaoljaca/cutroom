@@ -4,15 +4,22 @@ def main() -> None:
     width, height, frames = map(int, sys.argv[1:4])
     session = coreml_session()
     frame_bytes = width * height * 3
-    for index in range(1, frames + 1):
+    index = 0
+    while True:
         data = read_exact(frame_bytes)
+        if not data:
+            break
+        index += 1
         if len(data) != frame_bytes:
-            raise RuntimeError(f"Decoder ended at frame {index - 1}/{frames}.")
+            raise RuntimeError(f"Decoder emitted a partial frame after {index - 1} complete frames.")
         image = Image.frombytes("RGB", (width, height), data).convert("RGBA")
         result = remove(image, session=session, post_process_mask=True)
         sys.stdout.buffer.write(result.tobytes())
         sys.stdout.buffer.flush()
         progress(index, frames)
+    if index == 0:
+        raise RuntimeError("Decoder produced no cutout frames.")
+    event("stream_completed", frame=index, frames=index)
 
 
 def read_exact(size: int) -> bytes:

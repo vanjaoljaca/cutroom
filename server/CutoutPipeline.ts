@@ -35,9 +35,15 @@ async function streamCutout(path: string, overlay: SubjectCutoutOverlay, destina
   const decoder = spawn(ffmpegPath, decoderArgs(path, overlay, dimensions), { stdio: ["ignore", "pipe", "pipe"] });
   const segmenter = spawn(rembgPythonPath, [pythonScript, String(dimensions.width), String(dimensions.height), String(frames)], { env: { ...process.env, U2NET_HOME: rembgModelRoot }, stdio: ["pipe", "pipe", "pipe"] });
   const encoder = spawn(ffmpegPath, encoderArgs(destination, dimensions), { stdio: ["pipe", "ignore", "pipe"] });
-  decoder.stdout!.pipe(segmenter.stdin!);
-  segmenter.stdout!.pipe(encoder.stdin!);
+  pipeSafely(decoder.stdout!, segmenter.stdin!);
+  pipeSafely(segmenter.stdout!, encoder.stdin!);
   await supervisePipeline([decoder, segmenter, encoder], onProgress, signal);
+}
+
+function pipeSafely(source: NodeJS.ReadableStream, destination: NodeJS.WritableStream) {
+  source.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "EPIPE") log("cutout_pipe_read_failed", { error: error.message }); });
+  destination.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "EPIPE") log("cutout_pipe_write_failed", { error: error.message }); });
+  source.pipe(destination);
 }
 
 function updateFrameProgress(output: string, onProgress?: (progress: CutoutProgress) => void) {
