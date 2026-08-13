@@ -14,7 +14,7 @@ async function renderTikTok(project: VideoProject, cuts: SourceRange[], options:
   const jobId = options.jobId || `export-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const paths = await prepareExportPaths(project, preset, "mp4");
   const source = await probeMedia(primarySourcePath(project));
-  const profile = preset === "tiktok-software" ? qualityProfile : await hardwareEncodingProfile();
+  const profile = preset === "tiktok-software" ? qualityProfile : await requireHardwareEncodingProfile();
   log("export_started", { projectId: project.id, jobId, preset, duration: cutDuration(cuts), output: paths.output });
   try {
     const receipt = await renderTikTokAttempt(project, cuts, source, paths, jobId, snapshotHash, preset, profile, options);
@@ -29,14 +29,8 @@ async function renderTikTok(project: VideoProject, cuts: SourceRange[], options:
 }
 
 async function renderTikTokAttempt(project: VideoProject, cuts: SourceRange[], source: MediaProbe, paths: ExportPaths, jobId: string, snapshotHash: string, preset: "tiktok-60" | "tiktok-software", profile: ExportQualityProfile, options: RenderOptions) {
-  try { await runFfmpeg(buildExportCommand(project, cuts, source, paths.partial, profile), cutDuration(cuts), options); return finalizeTikTokExport(project, cuts, source, paths, jobId, snapshotHash, preset, profile); }
-  catch (error) {
-    if (profile.encoder !== "h264_videotoolbox" || options.signal?.aborted) throw error;
-    await unlink(paths.partial).catch(() => undefined);
-    log("hardware_export_fallback", { projectId: project.id, jobId, error: message(error), fallback: "libx264-slow" });
-    await runFfmpeg(buildExportCommand(project, cuts, source, paths.partial, qualityProfile), cutDuration(cuts), options);
-    return finalizeTikTokExport(project, cuts, source, paths, jobId, snapshotHash, preset, qualityProfile);
-  }
+  await runFfmpeg(buildExportCommand(project, cuts, source, paths.partial, profile), cutDuration(cuts), options);
+  return finalizeTikTokExport(project, cuts, source, paths, jobId, snapshotHash, preset, profile);
 }
 
 export function projectSnapshotHash(project: VideoProject): string {
@@ -110,15 +104,15 @@ function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: 
 }
 
 export function videoEncodingArgs(profile: ExportQualityProfile = qualityProfile): string[] {
-  const codec = profile.encoder === "h264_videotoolbox" ? ["-c:v", profile.encoder, "-b:v", "24M", "-maxrate", "32M", "-bufsize", "64M", "-allow_sw", "1"] : ["-c:v", profile.encoder, "-preset", profile.preset, "-crf", String(profile.crf)];
+  const codec = profile.encoder === "h264_videotoolbox" ? ["-c:v", profile.encoder, "-b:v", "24M", "-maxrate", "32M", "-bufsize", "64M"] : ["-c:v", profile.encoder, "-preset", profile.preset, "-crf", String(profile.crf)];
   return [...codec, "-profile:v", "high", "-level:v", "4.2", "-pix_fmt", "yuv420p", "-r", "60", "-fps_mode:v", "cfr", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"];
 }
 
-async function hardwareEncodingProfile(): Promise<ExportQualityProfile> {
+async function requireHardwareEncodingProfile(): Promise<ExportQualityProfile> {
   try { const { stdout } = await execFile(ffmpegPath, ["-hide_banner", "-encoders"], { maxBuffer: 2_000_000, timeout: 15_000 }); if (stdout.includes("h264_videotoolbox")) return hardwareReviewProfile; }
   catch (error) { log("hardware_encoder_probe_failed", { error: message(error) }); }
-  log("hardware_encoder_unavailable", { fallback: "libx264-slow-crf14" });
-  return qualityProfile;
+  log("hardware_encoder_unavailable", { requestedEncoder: "h264_videotoolbox", fallback: null });
+  throw new Error("VideoToolbox hardware encoding is unavailable. Choose High-quality software to export with libx264.");
 }
 
 function filterGraph(project: VideoProject, cuts: SourceRange[], inputIndexes: number[], overlays: EditorialOverlayInterval[], overlayInputStart: number, width: number, height: number): string {

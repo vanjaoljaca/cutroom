@@ -7,7 +7,9 @@ describe("video export quality contract", () => {
 
   it("offers an explicit faster review profile without dropping cadence", () => {
     const args = videoEncodingArgs(hardwareReviewProfile);
-    expect(args).toEqual(expect.arrayContaining(["h264_videotoolbox", "24M", "60", "cfr", "bt709", "1"]));
+    expect(args).toEqual(expect.arrayContaining(["h264_videotoolbox", "24M", "60", "cfr", "bt709"]));
+    expect(args).not.toContain("-allow_sw");
+    expect(args).not.toContain("libx264");
     expect(args).not.toContain("30");
   });
 
