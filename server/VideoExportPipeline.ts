@@ -91,15 +91,13 @@ async function probeKeyframes(path: string): Promise<number[]> {
   return stdout.split(/\s+/).map((value) => Number.parseFloat(value)).filter(Number.isFinite);
 }
 
-function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: string, profile: ExportQualityProfile, preset: ExportPreset = "tiktok-60"): string[] {
+export function buildExportCommand(project: VideoProject, cuts: SourceRange[], source: MediaProbe, output: string, profile: ExportQualityProfile, preset: ExportPreset = "tiktok-60"): string[] {
   const overlays = editorialOverlays(project, cuts);
   assertCutoutsReady(overlays);
   const args = ["-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-y"];
-  const inputPaths = [...new Set(cuts.map((cut) => programSourcePath(project, cut)))];
-  inputPaths.forEach((path) => args.push("-i", path));
-  const inputIndexes = cuts.map((cut) => inputPaths.indexOf(programSourcePath(project, cut)));
+  cuts.forEach((cut) => args.push("-ss", cut.start.toFixed(6), "-t", (cut.end - cut.start).toFixed(6), "-i", programSourcePath(project, cut)));
   overlays.forEach((item) => addEditorialInput(args, project, item, source.averageFrameRate));
-  const graph = filterGraph(project, cuts, inputIndexes, overlays, inputPaths.length, source.width, source.height);
+  const graph = filterGraph(project, cuts, overlays, cuts.length, source.width, source.height);
   return [...args, "-filter_complex", graph, "-map", "[exportv]", "-map", "[exporta]", ...videoEncodingArgs(profile, preset), "-c:a", "aac", "-profile:a", "aac_low", "-ar", "48000", "-ac", "2", "-b:a", preset === "lan-review" ? "160k" : "256k", "-movflags", "+faststart", output];
 }
 
@@ -116,8 +114,7 @@ async function requireHardwareEncodingProfile(): Promise<ExportQualityProfile> {
   throw new Error("VideoToolbox hardware encoding is unavailable. Choose High-quality software to export with libx264.");
 }
 
-function filterGraph(project: VideoProject, cuts: SourceRange[], inputIndexes: number[], overlays: EditorialOverlayInterval[], overlayInputStart: number, width: number, height: number): string {
-  const fanout = sourceFanoutFilters(project, cuts, inputIndexes);
+function filterGraph(project: VideoProject, cuts: SourceRange[], overlays: EditorialOverlayInterval[], overlayInputStart: number, width: number, height: number): string {
   const trims = cuts.flatMap((cut, index) => clipFilters(project, cut, index, width, height));
   const inputs = cuts.map((_, index) => `[v${index}][a${index}]`).join("");
   const concat = `${inputs}concat=n=${cuts.length}:v=1:a=1[cutv][exporta]`;
@@ -126,18 +123,7 @@ function filterGraph(project: VideoProject, cuts: SourceRange[], inputIndexes: n
   const visualBase = overlays.length ? `composite${overlays.length - 1}` : "cutv";
   const textFilters = textIntervals.map((interval, index) => textOverlayFilter(interval, index, index ? `text${index - 1}` : visualBase, width, height));
   const finalBase = textIntervals.length ? `text${textIntervals.length - 1}` : visualBase;
-  return [...fanout, ...trims, concat, ...overlayFilters, ...textFilters, `[${finalBase}]setsar=1[exportv]`].join(";");
-}
-
-function sourceFanoutFilters(project: VideoProject, cuts: SourceRange[], inputIndexes: number[]) {
-  return [...new Set(inputIndexes)].flatMap((inputIndex) => {
-    const clipIndexes = inputIndexes.map((value, index) => value === inputIndex ? index : -1).filter((index) => index >= 0);
-    const videoLabels = clipIndexes.map((index) => `[srcv${index}]`).join("");
-    const filters = [`[${inputIndex}:v:0]${clipIndexes.length > 1 ? `split=${clipIndexes.length}` : "null"}${videoLabels}`];
-    const audioClipIndexes = clipIndexes.filter((index) => sourceHasAudio(project, cuts[index]));
-    if (audioClipIndexes.length) filters.push(`[${inputIndex}:a:0]${audioClipIndexes.length > 1 ? `asplit=${audioClipIndexes.length}` : "anull"}${audioClipIndexes.map((index) => `[srca${index}]`).join("")}`);
-    return filters;
-  });
+  return [...trims, concat, ...overlayFilters, ...textFilters, `[${finalBase}]setsar=1[exportv]`].join(";");
 }
 
 export function textOverlayFilter(interval: TextOverlayProgramInterval, index: number, input: string, width: number, height: number): string {
@@ -160,8 +146,8 @@ function escapeDrawtext(text: string) { return text.replaceAll("\\", "\\\\").rep
 
 function clipFilters(project: VideoProject, cut: SourceRange, index: number, width: number, height: number): string[] {
   const duration = cut.end - cut.start;
-  const video = `[srcv${index}]trim=start=${cut.start}:end=${cut.end},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[v${index}]`;
-  const audio = sourceHasAudio(project, cut) ? `[srca${index}]atrim=start=${cut.start}:end=${cut.end},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${index}]` : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[a${index}]`;
+  const video = `[${index}:v:0]trim=start=0:end=${duration},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[v${index}]`;
+  const audio = sourceHasAudio(project, cut) ? `[${index}:a:0]atrim=start=0:end=${duration},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${index}]` : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[a${index}]`;
   return [video, audio];
 }
 

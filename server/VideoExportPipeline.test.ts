@@ -19,6 +19,14 @@ describe("video export quality contract", () => {
     expect(args).not.toContain("-allow_sw");
   });
 
+  it("seeks each sparse program clip before decoding instead of scanning source gaps", () => {
+    const project = { mediaLibrary: { primarySourceId: "media.primary", sources: [{ id: "media.primary", origin: { type: "local", path: "/media/source.mov" }, metadata: { audioCodec: "aac" } }] }, assetLibrary: { assets: [], bundles: [] }, overlays: [], cutoutOverlays: [], videoOverlays: [], textOverlays: [], subtitleTrack: { cues: [], style: {} } } as unknown as VideoProject;
+    const cuts = [{ sourceId: "media.primary", start: 10, end: 12 }, { sourceId: "media.primary", start: 900, end: 903 }] as any;
+    const command = buildExportCommand(project, cuts, { width: 1080, height: 1920, averageFrameRate: 60 } as any, "/tmp/review.mp4", hardwareReviewProfile, "lan-review");
+    expect(command.join(" ")).toContain("-ss 10.000000 -t 2.000000 -i /media/source.mov -ss 900.000000 -t 3.000000 -i /media/source.mov");
+    expect(command.join(" ")).not.toContain("trim=start=900");
+  });
+
   it("accepts the source cadence and rejects silent 60-to-30 fps regression", () => {
     expect(() => validateCadence(59.996, 59.998)).not.toThrow();
     expect(() => validateCadence(59.996, 30)).toThrow("source cadence 59.996 fps became 30.000 fps");
@@ -39,4 +47,4 @@ describe("video export quality contract", () => {
 });
 
 import type { VideoProject } from "../src/analysis-model";
-import { hardwareReviewProfile, projectSnapshotHash, textOverlayFilter, validateCadence, videoEncodingArgs } from "./VideoExportPipeline";
+import { buildExportCommand, hardwareReviewProfile, projectSnapshotHash, textOverlayFilter, validateCadence, videoEncodingArgs } from "./VideoExportPipeline";
