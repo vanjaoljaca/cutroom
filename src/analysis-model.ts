@@ -231,6 +231,7 @@ export type ProgramClip = {
 export type SubjectCutoutOverlay = {
   id: string;
   kind: "subject-cutout";
+  subjectTrackId?: string;
   label: string;
   sourceId: string;
   sourceStart: number;

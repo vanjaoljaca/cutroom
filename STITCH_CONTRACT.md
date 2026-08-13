@@ -64,6 +64,16 @@ Create a local person cutout and attach it to a program clip:
 npm run video:cutout -- <project-id> <source-id> <source-start> <source-end> <target-clip-id> "Me watching"
 ```
 
+Generated matte files remain segment-level regenerable artifacts. Each cutout record also carries a stable `subjectTrackId`; Cutroom groups those segments into one logical subject lane in assembled-program time. Source-time gaps therefore never reappear in the lane.
+
+Apply one normalized crop consistently across a logical subject track:
+
+```bash
+npm run video:cutout:crop -- --project <project-id> --subject-track subject.vanja --top 0 --right 0 --bottom 0.20 --left 0
+```
+
+The matching API is `PATCH /api/projects/<project-id>/subject-tracks/subject.vanja/crop` with `{ "revision": 58, "crop": { "top": 0, "right": 0, "bottom": 0.2, "left": 0 } }`. Both operations update all backing segments atomically; they do not regenerate alpha artifacts.
+
 HTTP equivalents:
 
 ```text

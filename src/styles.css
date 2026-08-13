@@ -126,10 +126,14 @@ button:focus-visible,
 .cutout-overlay-item { overflow: visible; }
 .cutout-viewport { position: relative; overflow: hidden; }
 .cutout-crop-handle { position: absolute; z-index: 3; padding: 0; border: 0; background: #ffd84d; touch-action: none; }
-.cutout-crop-handle.bottom { right: 12%; bottom: -3px; left: 12%; height: 6px; cursor: ns-resize; }
-.cutout-crop-control { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 4; width: 190px; padding: 7px 9px; color: #eee; border: 1px solid #555; border-radius: 4px; background: rgb(12 14 12 / 94%); font-size: 11px; cursor: default; }
-.cutout-crop-control output { float: right; color: #ffd84d; }
-.cutout-crop-control input { width: 100%; margin-top: 5px; accent-color: #ffd84d; }
+.cutout-crop-handle.top, .cutout-crop-handle.bottom { right: 12%; left: 12%; height: 5px; cursor: ns-resize; }
+.cutout-crop-handle.left, .cutout-crop-handle.right { top: 12%; bottom: 12%; width: 5px; cursor: ew-resize; }
+.cutout-crop-handle.top { top: -3px; } .cutout-crop-handle.bottom { bottom: -3px; } .cutout-crop-handle.left { left: -3px; } .cutout-crop-handle.right { right: -3px; }
+.cutout-crop-control { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 4; width: 245px; padding: 8px; color: #eee; border: 1px solid #555; border-radius: 4px; background: rgb(12 14 12 / 96%); font-size: 11px; cursor: default; }
+.cutout-crop-control header { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; } .cutout-crop-control header strong { flex: 1; }
+.cutout-crop-control label { display: grid; grid-template-columns: 42px 1fr 48px 10px; align-items: center; gap: 5px; text-transform: capitalize; }
+.cutout-crop-control input[type="range"] { min-width: 0; accent-color: #ffd84d; } .cutout-crop-control input[type="number"] { width: 44px; color: #eee; border: 1px solid #454945; background: #151815; }
+.cutout-crop-control output { color: #ffd84d; }
 .image-overlay-item.selected, .cutout-overlay-item.selected, .video-overlay-item.selected { outline: 2px solid #d98cff; outline-offset: 2px; }
 .overlay-resize-handle { width: 16px; height: 16px; position: absolute; right: -8px; bottom: -8px; display: none; padding: 0; border: 2px solid #131513; border-radius: 50%; background: #d98cff; cursor: nwse-resize; touch-action: none; }
 .image-overlay-item.selected .overlay-resize-handle, .cutout-overlay-item.selected .overlay-resize-handle, .video-overlay-item.selected .overlay-resize-handle { display: block; }

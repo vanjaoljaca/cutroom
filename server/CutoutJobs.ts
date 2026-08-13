@@ -74,7 +74,9 @@ function makeOverlay(project: VideoProject, input: CreateCutoutInput, jobId: str
   if (duration < 0.08) throw new Error("Cutout source and target must overlap for at least 0.08 seconds.");
   const id = `cutout.${randomUUID().toLowerCase()}`;
   const root = `derived/cutouts/${id}`;
-  return { id, kind: "subject-cutout", label: input.label.trim() || "Subject cutout", sourceId: source.id, sourceStart: input.sourceStart, sourceEnd: input.sourceStart + duration, target: { type: "program-clip", clipId: target.id, start: 0, end: duration }, layout: { anchor: "top-left", x: 0.62, y: 0.58, width: 0.34, height: null, fit: "contain", placementIntent: "explicit" }, crop: { top: 0, right: 0, bottom: 0, left: 0 }, layer: 20, opacity: 1, processing: { provider: "rembg-u2net-human-coreml", providerVersion: "2.0.0", status: "queued", previewPath: null, renderPath: null, recipePath: `${root}/recipe.json`, error: null, jobId, phase: "queued", progress: 0, statusPath: `${root}/status.json` }, createdAt: new Date().toISOString() };
+  const label = input.label.trim() || "Subject cutout";
+  const subjectTrackId = input.subjectTrackId || normalizedSubjectTrackId({ label, subjectTrackId: "" });
+  return { id, kind: "subject-cutout", subjectTrackId, label, sourceId: source.id, sourceStart: input.sourceStart, sourceEnd: input.sourceStart + duration, target: { type: "program-clip", clipId: target.id, start: 0, end: duration }, layout: { anchor: "top-left", x: 0.62, y: 0.58, width: 0.34, height: null, fit: "contain", placementIntent: "explicit" }, crop: { top: 0, right: 0, bottom: 0, left: 0 }, layer: 20, opacity: 1, processing: { provider: "rembg-u2net-human-coreml", providerVersion: "2.0.0", status: "queued", previewPath: null, renderPath: null, recipePath: `${root}/recipe.json`, error: null, jobId, phase: "queued", progress: 0, statusPath: `${root}/status.json` }, createdAt: new Date().toISOString() };
 }
 
 function jobStatus(projectId: string, overlayId: string, jobId: string, project: VideoProject): CutoutJobStatus {
@@ -100,3 +102,4 @@ import type { CutoutProcessing, SubjectCutoutOverlay, VideoProject } from "../sr
 import type { CreateCutoutInput, CutoutJobStatus } from "../src/CutoutModel";
 import { renderCutoutArtifacts, type CutoutProgress } from "./CutoutPipeline";
 import { projectDirectory, readStoredProject, writeStoredProject } from "./project-store";
+import { normalizedSubjectTrackId } from "../src/SubjectTrackModel";

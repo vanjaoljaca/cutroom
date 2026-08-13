@@ -12,6 +12,7 @@ export type CutoutJobStatus = {
 };
 
 export type CreateCutoutInput = {
+  subjectTrackId?: string;
   sourceId: string;
   sourceStart: number;
   sourceEnd: number;

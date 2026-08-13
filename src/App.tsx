@@ -502,13 +502,19 @@ export function App() {
 
   function changeCutoutLayout(id: string, layout: OverlayLayout, persist: boolean) {
     if (!project) return;
-    const cutoutOverlays = project.cutoutOverlays.map((overlay) => overlay.id === id ? { ...overlay, layout } : overlay);
+    const selected = project.cutoutOverlays.find((overlay) => overlay.id === id);
+    if (!selected) return;
+    const subjectTrackId = normalizedSubjectTrackId(selected);
+    const cutoutOverlays = project.cutoutOverlays.map((overlay) => normalizedSubjectTrackId(overlay) === subjectTrackId ? { ...overlay, subjectTrackId, layout } : overlay);
     commitProject({ ...project, cutoutOverlays }, persist);
   }
 
   function changeCutoutCrop(id: string, crop: CutoutCrop, persist: boolean) {
     if (!project) return;
-    const cutoutOverlays = project.cutoutOverlays.map((overlay) => overlay.id === id ? { ...overlay, crop } : overlay);
+    const selected = project.cutoutOverlays.find((overlay) => overlay.id === id);
+    if (!selected) return;
+    const subjectTrackId = normalizedSubjectTrackId(selected);
+    const cutoutOverlays = project.cutoutOverlays.map((overlay) => normalizedSubjectTrackId(overlay) === subjectTrackId ? { ...overlay, subjectTrackId, crop } : overlay);
     commitProject({ ...project, cutoutOverlays }, persist);
   }
 
@@ -1456,3 +1462,4 @@ import { projectRecordingViewer, rawRecordingViewer, recordingPhaseProject } fro
 import { countProgramScenesAndTakes, recordingProgramSegments, recordingSegmentActivationKey, selectProgramTake, type RecordingProgramSegment } from "./RecordingTakeSelectionModel";
 import { workflowViewForRoute } from "./WorkflowStepModel";
 import { installPlaybackDiagnosticSnapshot, PlaybackDiagnostics, type PlaybackHealth } from "./PlaybackDiagnostics";
+import { normalizedSubjectTrackId } from "./SubjectTrackModel";

@@ -10,13 +10,15 @@ export function CutoutOverlayTracks({ project, ranges, playhead, selectedId, onS
   const duration = cutDuration(ranges);
   const intervals = cutoutProgramIntervals(project, ranges);
   if (!intervals.length) return null;
-  return <>{intervals.map((interval) => { const order = compositingLaneOrder(interval.overlay.layer); return <Fragment key={interval.overlay.id}><div className="timeline-track-label cutout-track-label" style={{ order }}>Cutout</div><div className="cutout-tracks timeline-track-content" data-overlay-editor aria-label={`Subject cutout ${interval.overlay.label}`} style={{ order }}><CutoutTimingClip interval={interval} duration={duration} selected={selectedId === interval.overlay.id} onSelect={onSelect} onChange={onTimingChange} /><span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div></Fragment>; })}</>;
+  const tracks = groupedSubjectIntervals(intervals);
+  return <>{[...tracks].map(([trackId, segments]) => { const order = compositingLaneOrder(segments[0].overlay.layer); const label = subjectTrackLabel(segments.map(({ overlay }) => overlay)); return <Fragment key={trackId}><div className="timeline-track-label cutout-track-label" style={{ order }}>{label}</div><div className="cutout-tracks timeline-track-content" data-overlay-editor aria-label={`Subject ${label}`} style={{ order }}>{segments.map((interval) => <CutoutTimingClip key={interval.overlay.id} interval={interval} duration={duration} selected={selectedId === interval.overlay.id} onSelect={onSelect} onChange={onTimingChange} />)}<span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div></Fragment>; })}</>;
 }
 
 function EditableCutout({ projectId, interval, cutTime, playing, visible, selected, onSelect, onChange, onCropChange }: EditableCutoutProps) {
   const drag = useRef<LayoutDrag | null>(null);
   const cropDrag = useRef<CropDrag | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [sourceRatio, setSourceRatio] = useState(9 / 16);
   useEffect(() => { void synchronizeOverlayPlayback(videoRef.current, cutTime - interval.start, visible, playing); }, [cutTime, interval.start, playing, visible]);
   function begin(event: ReactPointerEvent<HTMLElement>, mode: LayoutDragMode) {
@@ -38,25 +40,41 @@ function EditableCutout({ projectId, interval, cutTime, playing, visible, select
     if (drag.current) onChange(interval.overlay.id, changedLayout(interval.overlay.layout, drag.current, event.clientX, event.clientY), true);
     drag.current = null;
   }
-  function beginCrop(event: ReactPointerEvent<HTMLButtonElement>) {
+  function beginCrop(event: ReactPointerEvent<HTMLButtonElement>, edge: CropEdge) {
     event.stopPropagation();
     const bounds = event.currentTarget.closest(".cutout-overlay-item")?.getBoundingClientRect();
     if (!bounds) return;
-    cropDrag.current = { clientY: event.clientY, fullHeight: bounds.height / (1 - interval.overlay.crop.top - interval.overlay.crop.bottom), crop: interval.overlay.crop };
+    cropDrag.current = { edge, clientX: event.clientX, clientY: event.clientY, fullWidth: bounds.width / (1 - interval.overlay.crop.left - interval.overlay.crop.right), fullHeight: bounds.height / (1 - interval.overlay.crop.top - interval.overlay.crop.bottom), crop: interval.overlay.crop };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function moveCrop(event: ReactPointerEvent<HTMLButtonElement>, commit = false) {
     if (!cropDrag.current) return;
     event.stopPropagation();
-    const bottom = clamp(cropDrag.current.crop.bottom - (event.clientY - cropDrag.current.clientY) / cropDrag.current.fullHeight, 0, 0.98 - cropDrag.current.crop.top);
-    onCropChange(interval.overlay.id, { ...cropDrag.current.crop, bottom }, commit);
+    onCropChange(interval.overlay.id, draggedCrop(cropDrag.current, event.clientX, event.clientY), commit);
     if (commit) cropDrag.current = null;
   }
   const overlay = interval.overlay;
   const style = { ...overlayFrameStyle(overlay.layout, overlay.opacity, overlay.layer, visible), aspectRatio: croppedAspectRatio(sourceRatio, 1, overlay.crop) };
   const videoStyle = croppedVideoStyle(overlay.crop);
-  return <div className={`cutout-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={style}><button className="overlay-move-surface cutout-viewport" tabIndex={visible ? 0 : -1} aria-label={`Move ${overlay.label} on video`} onClick={() => onSelect(overlay.id)} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted playsInline preload="metadata" style={videoStyle} onLoadedMetadata={(event) => setSourceRatio(event.currentTarget.videoWidth / event.currentTarget.videoHeight)} src={`/api/projects/${projectId}/cutouts/${overlay.id}/preview`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} />{selected && <><button className="cutout-crop-handle bottom" aria-label={`Crop bottom of ${overlay.label}`} onPointerDown={beginCrop} onPointerMove={(event) => moveCrop(event)} onPointerUp={(event) => moveCrop(event, true)} /><label className="cutout-crop-control">Bottom crop <output>{Math.round(overlay.crop.bottom * 100)}%</output><input aria-label="Bottom crop percentage" type="range" min="0" max={Math.floor((0.98 - overlay.crop.top) * 100)} value={Math.round(overlay.crop.bottom * 100)} onChange={(event) => onCropChange(overlay.id, { ...overlay.crop, bottom: Number(event.currentTarget.value) / 100 }, true)} /></label></>}</div>;
+  return <div className={`cutout-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={style}><button className="overlay-move-surface cutout-viewport" tabIndex={visible ? 0 : -1} aria-label={`Move ${overlay.label} on video`} onClick={() => onSelect(overlay.id)} onDoubleClick={() => { onSelect(overlay.id); setInspectorOpen(true); }} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted playsInline preload="metadata" style={videoStyle} onLoadedMetadata={(event) => setSourceRatio(event.currentTarget.videoWidth / event.currentTarget.videoHeight)} src={`/api/projects/${projectId}/cutouts/${overlay.id}/preview`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} />{selected && inspectorOpen && <>{cropEdges.map((edge) => <button key={edge} className={`cutout-crop-handle ${edge}`} aria-label={`Crop ${edge} of ${subjectTrackLabel([overlay])}`} onPointerDown={(event) => beginCrop(event, edge)} onPointerMove={moveCrop} onPointerUp={(event) => moveCrop(event, true)} />)}<CutoutCropInspector overlay={overlay} onChange={onCropChange} onClose={() => setInspectorOpen(false)} /></>}</div>;
 }
+
+function CutoutCropInspector({ overlay, onChange, onClose }: CropInspectorProps) {
+  return <section className="cutout-crop-control" aria-label={`Crop ${subjectTrackLabel([overlay])}`}><header><strong>{subjectTrackLabel([overlay])}</strong><button onClick={() => onChange(overlay.id, zeroCrop, true)}>Reset</button><button aria-label="Close subject editor" onClick={onClose}>×</button></header>{cropEdges.map((edge) => <label key={edge}><span>{edge}</span><input aria-label={`${edge} crop slider`} type="range" min="0" max={Math.floor(cropMaximum(overlay.crop, edge) * 100)} value={Math.round(overlay.crop[edge] * 100)} onChange={(event) => changeCropEdge(overlay, edge, event.currentTarget.value, onChange)} /><input aria-label={`${edge} crop percentage`} type="number" min="0" max={Math.floor(cropMaximum(overlay.crop, edge) * 100)} value={Math.round(overlay.crop[edge] * 100)} onChange={(event) => changeCropEdge(overlay, edge, event.currentTarget.value, onChange)} /><output>%</output></label>)}</section>;
+}
+
+function changeCropEdge(overlay: CutoutProgramInterval["overlay"], edge: CropEdge, value: string, onChange: CropChange) { onChange(overlay.id, { ...overlay.crop, [edge]: Number(value) / 100 }, true); }
+
+function draggedCrop(drag: CropDrag, clientX: number, clientY: number): CutoutCrop {
+  const deltaX = (clientX - drag.clientX) / drag.fullWidth;
+  const deltaY = (clientY - drag.clientY) / drag.fullHeight;
+  if (drag.edge === "top") return { ...drag.crop, top: clamp(drag.crop.top + deltaY, 0, 0.98 - drag.crop.bottom) };
+  if (drag.edge === "bottom") return { ...drag.crop, bottom: clamp(drag.crop.bottom - deltaY, 0, 0.98 - drag.crop.top) };
+  if (drag.edge === "left") return { ...drag.crop, left: clamp(drag.crop.left + deltaX, 0, 0.98 - drag.crop.right) };
+  return { ...drag.crop, right: clamp(drag.crop.right - deltaX, 0, 0.98 - drag.crop.left) };
+}
+
+function cropMaximum(crop: CutoutCrop, edge: CropEdge) { return 0.98 - crop[edge === "top" ? "bottom" : edge === "bottom" ? "top" : edge === "left" ? "right" : "left"]; }
 
 function croppedVideoStyle(crop: CutoutCrop): CSSProperties {
   const width = 1 - crop.left - crop.right;
@@ -115,11 +133,15 @@ function overlayFrameStyle(layout: OverlayLayout, opacity: number, layer: number
 function clamp(value: number, minimum: number, maximum: number) { return Math.min(maximum, Math.max(minimum, value)); }
 
 const minimumDuration = 0.08;
+const cropEdges = ["top", "right", "bottom", "left"] as const;
+const zeroCrop: CutoutCrop = { top: 0, right: 0, bottom: 0, left: 0 };
 const anchorTransform = { "top-left": "none", "top-right": "translateX(-100%)", center: "translate(-50%, -50%)", "bottom-left": "translateY(-100%)", "bottom-right": "translate(-100%, -100%)" };
 type LayoutDragMode = "move" | "resize";
 type TimingDragMode = "move" | "start" | "end";
 type LayoutDrag = { mode: LayoutDragMode; clientX: number; clientY: number; width: number; height: number; x: number; y: number; overlayWidth: number; overlayHeight: number | null; pixelWidth: number; pixelHeight: number };
-type CropDrag = { clientY: number; fullHeight: number; crop: CutoutCrop };
+type CropDrag = { edge: CropEdge; clientX: number; clientY: number; fullWidth: number; fullHeight: number; crop: CutoutCrop };
+type CropEdge = typeof cropEdges[number];
+type CropInspectorProps = { overlay: CutoutProgramInterval["overlay"]; onChange: CropChange; onClose: () => void };
 type TimingDrag = { mode: TimingDragMode; left: number; width: number; pointer: number; start: number; end: number };
 type LayoutChange = (id: string, layout: OverlayLayout, commit: boolean) => void;
 type CropChange = (id: string, crop: CutoutCrop, commit: boolean) => void;
@@ -138,3 +160,4 @@ import { compositingLaneOrder } from "./CompositingLaneModel";
 import { proportionalOverlaySize } from "./OverlayResizeModel";
 import { synchronizeOverlayPlayback } from "./OverlayVideoPlayback";
 import { croppedAspectRatio, type CutoutCrop } from "./CutoutCropModel";
+import { groupedSubjectIntervals, subjectTrackLabel } from "./SubjectTrackModel";

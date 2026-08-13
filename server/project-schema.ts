@@ -3,7 +3,7 @@ export function normalizeVideoProject(project: VideoProject): VideoProject {
   const assets = (library.assets || []).map((asset) => ({ ...asset, source: asset.source || emptySource }));
   const bundles = library.bundles || [];
   const overlays = (project.overlays || []).map((overlay) => ({ ...overlay, bundleId: overlay.bundleId || null }));
-  const cutoutOverlays = (project.cutoutOverlays || []).map((overlay) => ({ ...overlay, crop: normalizedCutoutCrop(overlay.crop) }));
+  const cutoutOverlays = (project.cutoutOverlays || []).map((overlay) => ({ ...overlay, subjectTrackId: normalizedSubjectTrackId(overlay), crop: normalizedCutoutCrop(overlay.crop) }));
   const videoOverlays = project.videoOverlays || [];
   const subtitleState = normalizeSubtitleTrack(project);
   const textOverlays = subtitleState.textOverlays;
@@ -188,6 +188,7 @@ function validateSceneClip(project: VideoProject, clip: ProgramClip) {
 
 function validateCutoutOverlay(project: VideoProject, overlay: SubjectCutoutOverlay) {
   assert(/^cutout\.[a-z0-9.-]+$/.test(overlay.id) && overlay.kind === "subject-cutout", `Invalid cutout id: ${overlay.id}`);
+  assert(typeof overlay.subjectTrackId === "string" && /^subject\.[a-z0-9.-]+$/.test(overlay.subjectTrackId), `Invalid subject track: ${overlay.id}`);
   assert(project.mediaLibrary.sources.some((source) => source.id === overlay.sourceId), `Unknown cutout source: ${overlay.id}`);
   const target = project.programTimeline.clips.find((clip) => clip.id === overlay.target.clipId);
   assert(Boolean(target) && overlay.target.type === "program-clip", `Unknown cutout target: ${overlay.id}`);
@@ -348,6 +349,7 @@ const emptySource = { sourceUrl: null, attribution: null, license: null };
 
 import type { AssetSource, ExportCadence, ExportReceipt, ImageOverlay, MediaLibrary, MediaTranscriptReference, OverlayLayout, PitchAnalysisReference, ProgramClip, RemoteMediaCache, SubjectCutoutOverlay, SubtitleCue, SubtitleStyle, TextOverlay, VideoMediaMetadata, VideoMediaSource, VideoOverlay, VideoProject } from "../src/analysis-model";
 import { normalizedCutoutCrop, validCutoutCrop } from "../src/CutoutCropModel";
+import { normalizedSubjectTrackId } from "../src/SubjectTrackModel";
 import { createProgramTimeline } from "../src/ProgramTimelineModel";
 import { recordingPlanForProject } from "../src/RecordingPlanModel";
 import { normalizeSubtitleTrack } from "../src/SubtitleModel";

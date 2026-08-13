@@ -34,6 +34,7 @@ async function handleProjectRequest(route: ProjectRoute, request: IncomingMessag
     if (route.action === "cutout-job" && route.itemId && request.method === "GET") return sendJson(response, 200, await durableCutoutJobStatus(route.id, route.itemId));
     if (route.action === "cutout-job" && route.itemId && request.method === "DELETE") return sendJson(response, 200, await cancelCutoutJob(route.id, route.itemId));
     if (route.action === "cutout-preview" && route.itemId && request.method === "GET") return serveCutoutPreview(route.id, route.itemId, request, response);
+    if (route.action === "subject-track-crop" && route.itemId && request.method === "PATCH") return sendJson(response, 200, await updateSubjectTrackCrop(route.id, route.itemId, request));
     if (route.action === "asset" && route.itemId && request.method === "GET") return serveAsset(route.id, route.itemId, response);
     if (route.action === "pitch" && request.method === "GET") return sendJson(response, 200, await readPitchArtifact(route.id));
     if (route.action === "pitch" && request.method === "POST") return sendJson(response, 200, await analyzeProjectPitch(route.id));
@@ -115,6 +116,12 @@ async function cutoutInput(request: IncomingMessage): Promise<CreateCutoutInput>
   return input;
 }
 
+async function updateSubjectTrackCrop(projectId: string, subjectTrackId: string, request: IncomingMessage) {
+  const input = JSON.parse(await readBody(request)) as { revision?: number; crop?: CutoutCrop };
+  if (!Number.isInteger(input.revision) || !input.crop) throw new Error("Subject track revision and crop are required.");
+  return setSubjectTrackCrop({ projectId, subjectTrackId, revision: input.revision!, crop: input.crop });
+}
+
 async function serveMedia(id: string, request: IncomingMessage, response: ServerResponse) {
   const project = await readStoredProject(id);
   const source = project.mediaLibrary.sources.find((item) => item.id === project.mediaLibrary.primarySourceId);
@@ -180,6 +187,8 @@ function parseRoute(rawUrl = "/"): ProjectRoute | null {
   if (references) return { id: references[1], action: "media-references", itemId: null };
   const preview = path.match(/^\/api\/projects\/([a-z0-9-]+)\/cutouts\/(cutout\.[a-z0-9.-]+)\/preview$/);
   if (preview) return { id: preview[1], action: "cutout-preview", itemId: preview[2] };
+  const subjectCrop = path.match(/^\/api\/projects\/([a-z0-9-]+)\/subject-tracks\/(subject\.[a-z0-9.-]+)\/crop$/);
+  if (subjectCrop) return { id: subjectCrop[1], action: "subject-track-crop", itemId: subjectCrop[2] };
   const cutoutJob = path.match(/^\/api\/projects\/([a-z0-9-]+)\/cutouts\/(cutout-job-[a-z0-9-]+)$/);
   if (cutoutJob) return { id: cutoutJob[1], action: "cutout-job", itemId: cutoutJob[2] };
   const cache = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/(media\.[a-z0-9.]+)\/cache$/);
@@ -238,7 +247,7 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: "cutroom-projects", event, ...details }));
 }
 
-type ProjectAction = "catalog" | "references" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "asset" | "pitch" | "subtitles" | "subtitle-cue" | "exports" | "export-job" | "export-file";
+type ProjectAction = "catalog" | "references" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "subject-track-crop" | "asset" | "pitch" | "subtitles" | "subtitle-cue" | "exports" | "export-job" | "export-file";
 type ProjectRoute = { id: string; action: ProjectAction; itemId: string | null };
 type ByteRange = { start: number; end: number };
 
@@ -261,3 +270,5 @@ import { cancelCutoutJob, durableCutoutJobStatus, startCutoutJob } from "./Cutou
 import { attachRawMedia, detachRawMedia, ingestRawMedia, readRawMediaLibrary } from "./RawMediaLibrary";
 import { editSubtitle, generateSubtitles, importSubtitles, previewGeneratedSubtitles, removeSubtitle, restoreSubtitle, type SubtitleEditInput } from "./SubtitleService";
 import { attachLibraryReference, readReferenceMediaLibrary } from "./ReferenceMediaLibrary";
+import type { CutoutCrop } from "../src/CutoutCropModel";
+import { setSubjectTrackCrop } from "./SubjectTrackService";
