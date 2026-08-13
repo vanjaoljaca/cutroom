@@ -17,11 +17,18 @@ export async function renderCutoutArtifacts(project: VideoProject, overlay: Subj
     onProgress?.({ phase: "finalizing", progress: 0.97, message: "Finalizing cutout…" });
     const recipePath = join(draft, "recipe.json");
     await writeFile(recipePath, `${JSON.stringify(recipe(project, overlay), null, 2)}\n`);
-    await mkdir(join(projectDirectory(project.id), "derived", "cutouts"), { recursive: true });
-    await rename(draft, destination);
+    await publishCutoutArtifacts(draft, destination);
     log("cutout_render_completed", { projectId: project.id, overlayId: overlay.id, destination });
     return relativeArtifacts(overlay.id);
   } finally { await rm(work, { recursive: true, force: true }); }
+}
+
+export async function publishCutoutArtifacts(draft: string, destination: string) {
+  await mkdir(destination, { recursive: true });
+  const publishId = randomUUID();
+  for (const name of artifactNames) await rename(join(draft, name), join(destination, `.${name}.${publishId}.partial`));
+  for (const name of artifactNames) await rename(join(destination, `.${name}.${publishId}.partial`), join(destination, name));
+  log("cutout_artifacts_published", { destination });
 }
 
 async function prepareWork(work: string) {
@@ -104,3 +111,4 @@ const rembgPythonPath = process.env.CUTROOM_REMBG_PYTHON || "/Volumes/VanjaOljac
 const rembgModelRoot = process.env.CUTROOM_REMBG_MODELS || "/Volumes/VanjaOljacaX/Cutroom/runtime/rembg/models";
 const pythonScript = fileURLToPath(new URL("../scripts/RemoveVideoBackground.py", import.meta.url));
 const cutoutFps = 30;
+const artifactNames = ["preview.webm", "render.mov", "recipe.json"];
