@@ -285,8 +285,8 @@ export type DeletedSubtitleCue = { cue: SubtitleCue; formerIndex: number; delete
 export type SubtitleStyle = TextOverlay["style"] & { anchor: "bottom"; x: number; y: number; maxWidth: number; safeZone: boolean; layer: number; opacity: number };
 
 export type CutoutProcessing = {
-  provider: "rembg-u2net-human";
-  providerVersion: "1.0.0";
+  provider: "rembg-u2net-human" | "rembg-u2net-human-coreml";
+  providerVersion: "1.0.0" | "2.0.0";
   status: "queued" | "processing" | "ready" | "failed";
   previewPath: string | null;
   renderPath: string | null;

@@ -824,7 +824,7 @@ export function App() {
           />
         </div></>}
       </section>
-    </main>{project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onReplace={replaceSourceInProgram} onCreateCutout={createSubjectCutout} />}{recordingTakeMenu && recordingPreviewProject && <RecordingTakeMenu project={recordingPreviewProject} state={recordingTakeMenu} onSelect={chooseRecordingTake} onClose={() => setRecordingTakeMenu(null)} />}{pitchVisible && <PitchPopup artifact={pitchArtifact} mode={mode} ranges={ranges} duration={originalDuration} playheadRatio={displayDuration ? displayTime / displayDuration : 0} status={pitchStatus} onSeekRatio={seekFromRatio} onClose={() => setPitchVisible(false)} />}{projectRail}</>
+    </main>{project && <SourceBrowser project={project} open={sourceBrowserOpen} selectedClipId={selectedClipId} cutoutStatus={cutoutStatus} onClose={() => setSourceBrowserOpen(false)} onInsert={insertSourceIntoProgram} onReplace={replaceSourceInProgram} onCreateCutout={createSubjectCutout} onCancelCutout={() => void cancelCutout(project.id, cutoutStatus, setCutoutStatus)} />}{recordingTakeMenu && recordingPreviewProject && <RecordingTakeMenu project={recordingPreviewProject} state={recordingTakeMenu} onSelect={chooseRecordingTake} onClose={() => setRecordingTakeMenu(null)} />}{pitchVisible && <PitchPopup artifact={pitchArtifact} mode={mode} ranges={ranges} duration={originalDuration} playheadRatio={displayDuration ? displayTime / displayDuration : 0} status={pitchStatus} onSeekRatio={seekFromRatio} onClose={() => setPitchVisible(false)} />}{projectRail}</>
   );
 }
 
@@ -1234,6 +1234,14 @@ async function requestCutout(projectId: string, input: CreateCutoutInput): Promi
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Could not create subject cutout.");
   return result as CutoutJobStatus;
+}
+
+async function cancelCutout(projectId: string, status: CutoutJobStatus | null, update: (status: CutoutJobStatus) => void) {
+  if (!status) return;
+  const response = await fetch(`/api/projects/${projectId}/cutouts/${status.jobId}`, { method: "DELETE" });
+  const result = await response.json() as CutoutJobStatus & { error?: string };
+  if (!response.ok) throw new Error(result.error || "Could not cancel subject cutout.");
+  update(result);
 }
 
 function monitorCutout(projectId: string | null, status: CutoutJobStatus | null, apply: (status: CutoutJobStatus) => void) {

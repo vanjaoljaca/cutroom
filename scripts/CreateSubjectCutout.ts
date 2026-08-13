@@ -1,16 +1,19 @@
 async function main() {
   const input = parseInput(process.argv.slice(2));
   const started = await startCutoutJob(input.projectId, input);
+  const stop = () => { void cancelCutoutJob(input.projectId, started.jobId); };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
   log("cutout_cli_started", { projectId: input.projectId, jobId: started.jobId, overlayId: started.overlayId });
   const completed = await waitForCompletion(input.projectId, started.jobId);
-  if (completed.state === "failed") throw new Error(completed.error || "Subject cutout failed.");
+  if (completed.state === "failed" || completed.state === "cancelled") throw new Error(completed.error || completed.message);
   process.stdout.write(`${JSON.stringify(completed, null, 2)}\n`);
 }
 
 async function waitForCompletion(projectId: string, jobId: string): Promise<CutoutJobStatus> {
   while (true) {
     const status = cutoutJobStatus(projectId, jobId);
-    if (status.state === "completed" || status.state === "failed") return status;
+    if (["completed", "failed", "cancelled"].includes(status.state)) return status;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }
@@ -30,4 +33,4 @@ const usage = "Usage: npm run video:cutout -- <project-id> <source-id> <source-s
 void main().catch((error) => { console.error(JSON.stringify({ scope: "cutroom-cutout-cli", event: "cutout_cli_failed", error: error instanceof Error ? error.message : String(error) })); process.exitCode = 1; });
 
 import type { CreateCutoutInput, CutoutJobStatus } from "../src/CutoutModel";
-import { cutoutJobStatus, startCutoutJob } from "../server/CutoutJobs";
+import { cancelCutoutJob, cutoutJobStatus, startCutoutJob } from "../server/CutoutJobs";

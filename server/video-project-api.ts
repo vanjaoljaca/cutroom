@@ -31,6 +31,7 @@ async function handleProjectRequest(route: ProjectRoute, request: IncomingMessag
     if (route.action === "media-cache" && route.itemId && request.method === "POST") return sendJson(response, 200, await regenerateRemoteReference(route.id, route.itemId));
     if (route.action === "cutouts" && request.method === "POST") return sendJson(response, 202, await startCutoutJob(route.id, await cutoutInput(request)));
     if (route.action === "cutout-job" && route.itemId && request.method === "GET") return sendJson(response, 200, await durableCutoutJobStatus(route.id, route.itemId));
+    if (route.action === "cutout-job" && route.itemId && request.method === "DELETE") return sendJson(response, 200, await cancelCutoutJob(route.id, route.itemId));
     if (route.action === "cutout-preview" && route.itemId && request.method === "GET") return serveCutoutPreview(route.id, route.itemId, request, response);
     if (route.action === "asset" && route.itemId && request.method === "GET") return serveAsset(route.id, route.itemId, response);
     if (route.action === "pitch" && request.method === "GET") return sendJson(response, 200, await readPitchArtifact(route.id));
@@ -253,6 +254,6 @@ import { addRemoteReference, attachCachedRemoteReference, mediaSourcePath, regen
 import { runtimeRoot } from "./RuntimeStorage";
 import { cancelExportJob, exportJobStatus, exportOverview, startExportJob } from "./VideoExportJobs";
 import { listProjects, renameProject, trashProject } from "./ProjectCatalog";
-import { durableCutoutJobStatus, startCutoutJob } from "./CutoutJobs";
+import { cancelCutoutJob, durableCutoutJobStatus, startCutoutJob } from "./CutoutJobs";
 import { attachRawMedia, detachRawMedia, ingestRawMedia, readRawMediaLibrary } from "./RawMediaLibrary";
 import { editSubtitle, generateSubtitles, importSubtitles, previewGeneratedSubtitles, removeSubtitle, restoreSubtitle, type SubtitleEditInput } from "./SubtitleService";

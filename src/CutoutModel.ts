@@ -1,4 +1,4 @@
-export type CutoutJobState = "queued" | "processing" | "completed" | "failed";
+export type CutoutJobState = "queued" | "processing" | "completed" | "failed" | "cancelled";
 
 export type CutoutJobStatus = {
   jobId: string;

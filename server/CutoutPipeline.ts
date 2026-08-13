@@ -1,4 +1,4 @@
-export async function renderCutoutArtifacts(project: VideoProject, overlay: SubjectCutoutOverlay, onProgress?: (progress: CutoutProgress) => void): Promise<CutoutArtifacts> {
+export async function renderCutoutArtifacts(project: VideoProject, overlay: SubjectCutoutOverlay, onProgress?: (progress: CutoutProgress) => void, signal?: AbortSignal): Promise<CutoutArtifacts> {
   log("cutout_render_started", { projectId: project.id, overlayId: overlay.id, sourceId: overlay.sourceId });
   await assertRuntimeStorageAvailable();
   await access(rembgPythonPath).catch(() => { throw new Error(`Local person segmentation is not installed at ${rembgPythonPath}.`); });
@@ -8,12 +8,9 @@ export async function renderCutoutArtifacts(project: VideoProject, overlay: Subj
   const work = join(projectDirectory(project.id), "derived", "cutouts", `.work-${randomUUID()}`);
   const draft = join(work, "artifacts");
   try {
-    await prepareWork(work);
-    onProgress?.({ phase: "extracting", progress: 0.02, message: "Extracting frames…" });
-    await extractFrames(mediaSourcePath(source), overlay, work);
-    onProgress?.({ phase: "segmenting", progress: 0.18, message: "Removing background…" });
-    await segmentFrames(work, onProgress);
-    await encodeArtifacts(work, draft, onProgress);
+    await mkdir(draft, { recursive: true });
+    onProgress?.({ phase: "extracting", progress: 0.02, message: "Starting VideoToolbox decode…" });
+    await streamCutout(mediaSourcePath(source), overlay, draft, onProgress, signal);
     onProgress?.({ phase: "finalizing", progress: 0.97, message: "Finalizing cutout…" });
     const recipePath = join(draft, "recipe.json");
     await writeFile(recipePath, `${JSON.stringify(recipe(project, overlay), null, 2)}\n`);
@@ -31,20 +28,16 @@ export async function publishCutoutArtifacts(draft: string, destination: string)
   log("cutout_artifacts_published", { destination });
 }
 
-async function prepareWork(work: string) {
-  await mkdir(join(work, "source"), { recursive: true });
-  await mkdir(join(work, "transparent"), { recursive: true });
-}
-
-async function extractFrames(path: string, overlay: SubjectCutoutOverlay, work: string) {
+async function streamCutout(path: string, overlay: SubjectCutoutOverlay, destination: string, onProgress?: (progress: CutoutProgress) => void, signal?: AbortSignal) {
   const duration = overlay.sourceEnd - overlay.sourceStart;
-  await command(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-ss", String(overlay.sourceStart), "-t", String(duration), "-i", path, "-vf", `fps=${cutoutFps}`, "-start_number", "0", join(work, "source", "%06d.png")], {});
-}
-
-async function segmentFrames(work: string, onProgress?: (progress: CutoutProgress) => void) {
-  const source = join(work, "source");
-  const output = join(work, "transparent");
-  await streamingCommand(rembgPythonPath, [pythonScript, source, output], { ...process.env, U2NET_HOME: rembgModelRoot }, (output) => updateFrameProgress(output, onProgress));
+  const dimensions = await displayedDimensions(path);
+  const frames = Math.ceil(duration * cutoutFps);
+  const decoder = spawn(ffmpegPath, decoderArgs(path, overlay, dimensions), { stdio: ["ignore", "pipe", "pipe"] });
+  const segmenter = spawn(rembgPythonPath, [pythonScript, String(dimensions.width), String(dimensions.height), String(frames)], { env: { ...process.env, U2NET_HOME: rembgModelRoot }, stdio: ["pipe", "pipe", "pipe"] });
+  const encoder = spawn(ffmpegPath, encoderArgs(destination, dimensions), { stdio: ["pipe", "ignore", "pipe"] });
+  decoder.stdout!.pipe(segmenter.stdin!);
+  segmenter.stdout!.pipe(encoder.stdin!);
+  await supervisePipeline([decoder, segmenter, encoder], onProgress, signal);
 }
 
 function updateFrameProgress(output: string, onProgress?: (progress: CutoutProgress) => void) {
@@ -53,35 +46,42 @@ function updateFrameProgress(output: string, onProgress?: (progress: CutoutProgr
   if (latest) onProgress?.({ phase: "segmenting", progress: 0.18 + (Number(latest[1]) / Number(latest[2])) * 0.62, message: `Removing background · ${latest[1]}/${latest[2]} frames` });
 }
 
-async function streamingCommand(executable: string, args: string[], env: NodeJS.ProcessEnv, onOutput: (output: string) => void) {
-  const child = spawn(executable, args, { env, stdio: ["ignore", "pipe", "pipe"] });
-  await new Promise<void>((resolve, reject) => superviseProcess(child, onOutput, resolve, reject));
+export function decoderArgs(path: string, overlay: SubjectCutoutOverlay, dimensions: Dimensions) {
+  return ["-hide_banner", "-loglevel", "error", "-hwaccel", "videotoolbox", "-ss", String(overlay.sourceStart), "-t", String(overlay.sourceEnd - overlay.sourceStart), "-i", path, "-vf", `fps=${cutoutFps}`, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"];
 }
 
-function superviseProcess(child: ReturnType<typeof spawn>, onOutput: (output: string) => void, resolve: () => void, reject: (error: Error) => void) {
-  let stderr = "";
-  const timeout = setTimeout(() => child.kill("SIGTERM"), 30 * 60_000);
-  child.stdout!.on("data", (chunk) => onOutput(String(chunk)));
-  child.stderr!.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-8000); });
-  child.on("error", reject);
-  child.on("close", (code) => { clearTimeout(timeout); code === 0 ? resolve() : reject(new Error(stderr.trim() || `Cutout process exited with code ${code}.`)); });
+export function encoderArgs(destination: string, dimensions: Dimensions) {
+  const input = ["-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-video_size", `${dimensions.width}x${dimensions.height}`, "-framerate", String(cutoutFps), "-i", "pipe:0"];
+  const preview = ["-map", "0:v", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "18", join(destination, "preview.webm")];
+  const render = ["-map", "0:v", "-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", "yuva444p10le", join(destination, "render.mov")];
+  return [...input, ...preview, ...render];
 }
 
-async function encodeArtifacts(work: string, destination: string, onProgress?: (progress: CutoutProgress) => void) {
-  const frames = join(work, "transparent", "%06d.png");
-  await mkdir(destination, { recursive: true });
-  onProgress?.({ phase: "encoding-preview", progress: 0.82, message: "Encoding preview…" });
-  await command(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", String(cutoutFps), "-start_number", "0", "-i", frames, "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "18", join(destination, "preview.webm")], {});
-  onProgress?.({ phase: "encoding-render", progress: 0.9, message: "Encoding full-quality cutout…" });
-  await command(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", String(cutoutFps), "-start_number", "0", "-i", frames, "-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", "yuva444p10le", join(destination, "render.mov")], {});
+async function supervisePipeline(children: ReturnType<typeof spawn>[], onProgress?: (progress: CutoutProgress) => void, signal?: AbortSignal) {
+  const errors = new Map<number, string>();
+  children.forEach((child, index) => child.stderr!.on("data", (chunk) => { const output = String(chunk); errors.set(index, `${errors.get(index) || ""}${output}`.slice(-8000)); if (index === 1) updateFrameProgress(output, onProgress); }));
+  const stop = () => children.forEach((child) => child.kill("SIGTERM"));
+  signal?.addEventListener("abort", stop, { once: true });
+  const timeout = setTimeout(stop, 30 * 60_000);
+  try { if (signal?.aborted) stop(); await Promise.all(children.map((child, index) => processExit(child, index, errors))); }
+  catch (error) { stop(); throw error; }
+  finally { clearTimeout(timeout); signal?.removeEventListener("abort", stop); }
 }
 
-async function command(executable: string, args: string[], options: { env?: NodeJS.ProcessEnv }) {
-  return execFile(executable, args, { ...options, maxBuffer: 10_000_000, timeout: 30 * 60_000 });
+async function processExit(child: ReturnType<typeof spawn>, index: number, errors: Map<number, string>) {
+  await new Promise<void>((resolve, reject) => { child.once("error", reject); child.once("close", (code) => code === 0 ? resolve() : reject(new Error(errors.get(index)?.trim() || `Cutout stage ${index + 1} exited with code ${code}.`))); });
+}
+
+async function displayedDimensions(path: string): Promise<Dimensions> {
+  const { stdout } = await execFile(ffprobePath, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:stream_side_data=rotation", "-of", "json", path]);
+  const stream = JSON.parse(stdout).streams?.[0];
+  if (!stream?.width || !stream?.height) throw new Error("Could not determine cutout source dimensions.");
+  const rotation = Number(stream.side_data_list?.[0]?.rotation || 0);
+  return Math.abs(rotation) % 180 === 90 ? { width: stream.height, height: stream.width } : { width: stream.width, height: stream.height };
 }
 
 function recipe(project: VideoProject, overlay: SubjectCutoutOverlay) {
-  return { version: 1, provider: overlay.processing.provider, providerVersion: overlay.processing.providerVersion, projectId: project.id, overlayId: overlay.id, sourceId: overlay.sourceId, sourceStart: overlay.sourceStart, sourceEnd: overlay.sourceEnd, fps: cutoutFps, modelHome: "runtime/rembg/models", createdAt: new Date().toISOString() };
+  return { version: 2, provider: overlay.processing.provider, providerVersion: overlay.processing.providerVersion, backend: "onnxruntime-coreml", computeUnits: "ALL", decode: "videotoolbox", transport: "bounded-raw-frame-pipe", projectId: project.id, overlayId: overlay.id, sourceId: overlay.sourceId, sourceStart: overlay.sourceStart, sourceEnd: overlay.sourceEnd, fps: cutoutFps, modelHome: "runtime/rembg/models", createdAt: new Date().toISOString() };
 }
 
 function relativeArtifacts(id: string): CutoutArtifacts {
@@ -93,6 +93,7 @@ function log(event: string, details: Record<string, unknown>) { console.info(JSO
 
 export type CutoutArtifacts = { previewPath: string; renderPath: string; recipePath: string };
 export type CutoutProgress = { phase: NonNullable<SubjectCutoutOverlay["processing"]["phase"]>; progress: number; message: string };
+export type Dimensions = { width: number; height: number };
 
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -107,6 +108,7 @@ import { projectDirectory } from "./project-store";
 
 const execFile = promisify(execFileCallback);
 const ffmpegPath = process.env.CUTROOM_FFMPEG || "/opt/homebrew/bin/ffmpeg";
+const ffprobePath = process.env.CUTROOM_FFPROBE || "/opt/homebrew/bin/ffprobe";
 const rembgPythonPath = process.env.CUTROOM_REMBG_PYTHON || "/Volumes/VanjaOljacaX/Cutroom/runtime/rembg/.venv/bin/python";
 const rembgModelRoot = process.env.CUTROOM_REMBG_MODELS || "/Volumes/VanjaOljacaX/Cutroom/runtime/rembg/models";
 const pythonScript = fileURLToPath(new URL("../scripts/RemoveVideoBackground.py", import.meta.url));

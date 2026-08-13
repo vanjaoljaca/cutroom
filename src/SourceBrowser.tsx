@@ -1,4 +1,4 @@
-export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onClose, onInsert, onReplace, onCreateCutout }: SourceBrowserProps) {
+export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onClose, onInsert, onReplace, onCreateCutout, onCancelCutout }: SourceBrowserProps) {
   const references = project.mediaLibrary.sources.filter((source) => source.role === "reference");
   const [sourceId, setSourceId] = useState(references[0]?.id || project.mediaLibrary.primarySourceId);
   const [duration, setDuration] = useState(0);
@@ -65,7 +65,7 @@ export function SourceBrowser({ project, open, selectedClipId, cutoutStatus, onC
         <div className="source-commit-actions"><button className="insert-source" disabled={interval.end - interval.start < minimumDuration} onClick={insert}><Plus size={16} weight="bold" /> Add to program</button><button disabled={!selectedClipId || interval.end - interval.start < minimumDuration} onClick={replace}>Replace selected clip</button></div>
         <button className="create-cutout" disabled={!selectedClipId || interval.end - interval.start < minimumDuration || cutoutStatus?.state === "queued" || cutoutStatus?.state === "processing"} onClick={createCutout}><PersonSimple size={16} weight="bold" /> Place subject over selected clip</button>
         {selectedClip && <p className="selected-source-clip">Selected program clip: {selectedClip.label}</p>}
-        {cutoutStatus && <p className={`cutout-status ${cutoutStatus.state}`} role={cutoutStatus.state === "failed" ? "alert" : "status"}>{cutoutStatus.message}{cutoutStatus.state === "processing" ? ` · ${Math.round(cutoutStatus.progress * 100)}%` : ""}{cutoutStatus.error ? ` · ${cutoutStatus.error}` : ""}</p>}
+        {cutoutStatus && <p className={`cutout-status ${cutoutStatus.state}`} role={cutoutStatus.state === "failed" ? "alert" : "status"}>{cutoutStatus.message}{cutoutStatus.state === "processing" ? ` · ${Math.round(cutoutStatus.progress * 100)}%` : ""}{cutoutStatus.error ? ` · ${cutoutStatus.error}` : ""}{["queued", "processing"].includes(cutoutStatus.state) && <button onClick={onCancelCutout}>Cancel</button>}</p>}
         {!references.length && <p>No referenced videos yet. Give a remote video to the Codex video task; its regenerable USB cache will appear here.</p>}
       </div>
     </div>
@@ -121,7 +121,7 @@ function formatPrecise(value: number) { return `${Math.floor(value / 60)}:${(val
 const minimumDuration = 0.08;
 
 type SourcePlacement = "start" | "before" | "after" | "end";
-type SourceBrowserProps = { project: VideoProject; open: boolean; selectedClipId: string | null; cutoutStatus: CutoutJobStatus | null; onClose: () => void; onInsert: (source: VideoMediaSource, start: number, end: number, index: number) => void; onReplace: (source: VideoMediaSource, start: number, end: number, clipId: string) => void; onCreateCutout: (source: VideoMediaSource, start: number, end: number, targetClipId: string) => void };
+type SourceBrowserProps = { project: VideoProject; open: boolean; selectedClipId: string | null; cutoutStatus: CutoutJobStatus | null; onClose: () => void; onInsert: (source: VideoMediaSource, start: number, end: number, index: number) => void; onReplace: (source: VideoMediaSource, start: number, end: number, clipId: string) => void; onCreateCutout: (source: VideoMediaSource, start: number, end: number, targetClipId: string) => void; onCancelCutout: () => void };
 type SourceTabsProps = { project: VideoProject; sourceId: string; onChange: (sourceId: string) => void };
 type SourceRangeEditorProps = { duration: number; fps: number; interval: SourceInterval; waveform: number[]; onChange: Dispatch<SetStateAction<SourceInterval>> };
 type BoundaryFieldProps = { label: "In" | "Out"; value: number; onChange: (value: number) => void; onNudge: (frames: number) => void };

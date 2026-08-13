@@ -202,7 +202,8 @@ function validateCutoutOverlay(project: VideoProject, overlay: SubjectCutoutOver
 function validateCutoutProcessing(overlay: SubjectCutoutOverlay) {
   const processing = overlay.processing;
   const root = `derived/cutouts/${overlay.id}/`;
-  assert(processing.provider === "rembg-u2net-human" && processing.providerVersion === "1.0.0", `Unsupported cutout provider: ${overlay.id}`);
+  const supported = (processing.provider === "rembg-u2net-human" && processing.providerVersion === "1.0.0") || (processing.provider === "rembg-u2net-human-coreml" && processing.providerVersion === "2.0.0");
+  assert(supported, `Unsupported cutout provider: ${overlay.id}`);
   assert(["queued", "processing", "ready", "failed"].includes(processing.status), `Invalid cutout status: ${overlay.id}`);
   assert(processing.recipePath === `${root}recipe.json`, `Unsafe cutout recipe path: ${overlay.id}`);
   assert(processing.previewPath === null || processing.previewPath === `${root}preview.webm`, `Unsafe cutout preview path: ${overlay.id}`);
