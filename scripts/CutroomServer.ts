@@ -3,7 +3,7 @@ process.title = "Cutroom";
 async function main() {
   const server = createServer(serve);
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); });
-  log("service_started", { pid: process.pid, sourceRevision, clientRoot, url: "http://capcut" });
+  log("service_started", { pid: process.pid, sourceRevision, clientRoot, url: "http://cutroom" });
   registerShutdown(server);
 }
 
@@ -14,7 +14,7 @@ async function serve(request: IncomingMessage, response: ServerResponse) {
 }
 
 async function serveClient(request: IncomingMessage, response: ServerResponse) {
-  const pathname = decodeURIComponent(new URL(request.url || "/", "http://capcut").pathname);
+  const pathname = decodeURIComponent(new URL(request.url || "/", "http://cutroom").pathname);
   if (!["GET", "HEAD"].includes(request.method || "GET")) return send(response, 405, "text/plain", "Method not allowed.");
   if (pathname.startsWith("/api/")) return send(response, 404, "application/json", JSON.stringify({ error: "Not found." }));
   const file = await clientFile(pathname);

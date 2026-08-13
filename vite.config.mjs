@@ -7,7 +7,7 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    allowedHosts: ["terminal.local", "capcut"],
+    allowedHosts: ["terminal.local", "cutroom"],
     warmup: {
       clientFiles: ["./src/main.tsx"],
     },

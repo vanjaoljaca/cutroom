@@ -11,7 +11,7 @@ describe("project routes", () => {
 
   it("builds stable local project URLs", () => {
     expect(canonicalProjectPath("my cut")).toBe("/project/my%20cut");
-    expect(projectWebUrl("img-9340-123")).toBe("http://capcut/project/img-9340-123");
+    expect(projectWebUrl("img-9340-123")).toBe("http://cutroom/project/img-9340-123");
   });
 
   it("reads and builds recording workspace routes", () => {

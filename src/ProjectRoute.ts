@@ -20,7 +20,7 @@ export function legacyProjectRedirect(pathname: string, search: string): string 
   return projectId ? canonicalProjectPath(projectId) : null;
 }
 
-export function projectWebUrl(projectId: string, origin = "http://capcut"): string {
+export function projectWebUrl(projectId: string, origin = "http://cutroom"): string {
   return `${origin}${canonicalProjectPath(projectId)}`;
 }
 

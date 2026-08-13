@@ -33,7 +33,7 @@ npm run build
 npm run service:start
 ```
 
-Open `http://127.0.0.1:4173`. A project route is `/project/<project-id>`.
+Open `http://cutroom`. A canonical project URL is `http://cutroom/project/<project-id>`; `127.0.0.1:4173` is the internal diagnostic endpoint.
 
 Cutroom does not bundle media or model weights. Project files, raw recordings, source caches, analysis artifacts, models, and exports live under `CUTROOM_RUNTIME_ROOT`; the default is `/Volumes/VanjaOljacaX/Cutroom`. If that storage is unavailable, Cutroom fails clearly instead of falling back to Downloads, `/tmp`, the repository, or a home cache. Set `CUTROOM_RUNTIME_ROOT` explicitly only when developing against another deliberate storage root.
 
