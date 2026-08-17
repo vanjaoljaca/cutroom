@@ -225,7 +225,17 @@ export type ProgramClip = {
   sourceEnd: number;
   sceneId: string | null;
   takeId: string | null;
+  audioSource?: ProgramAudioSource | null;
   createdAt: string;
+};
+
+export type ProgramAudioSource = {
+  sourceId: string;
+  sourceStart: number;
+  sourceEnd: number;
+  volume: number;
+  muted: boolean;
+  subjectTrackId: string | null;
 };
 
 export type SubjectCutoutOverlay = {

@@ -96,8 +96,10 @@ export function buildExportCommand(project: VideoProject, cuts: SourceRange[], s
   assertCutoutsReady(overlays);
   const args = ["-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-y"];
   cuts.forEach((cut) => args.push("-ss", cut.start.toFixed(6), "-t", (cut.end - cut.start).toFixed(6), "-i", programSourcePath(project, cut)));
+  const alternateAudio = alternateAudioInputs(project, cuts);
+  alternateAudio.forEach(({ audio, duration }) => args.push("-ss", audio.sourceStart.toFixed(6), "-t", duration.toFixed(6), "-i", mediaPath(project, audio.sourceId)));
   overlays.forEach((item) => addEditorialInput(args, project, item, source.averageFrameRate));
-  const graph = filterGraph(project, cuts, overlays, cuts.length, source.width, source.height);
+  const graph = filterGraph(project, cuts, overlays, cuts.length + alternateAudio.length, source.width, source.height, alternateAudio);
   return [...args, "-filter_complex", graph, "-map", "[exportv]", "-map", "[exporta]", ...videoEncodingArgs(profile, preset), "-c:a", "aac", "-profile:a", "aac_low", "-ar", "48000", "-ac", "2", "-b:a", preset === "lan-review" ? "160k" : "256k", "-movflags", "+faststart", output];
 }
 
@@ -114,8 +116,8 @@ async function requireHardwareEncodingProfile(): Promise<ExportQualityProfile> {
   throw new Error("VideoToolbox hardware encoding is unavailable. Choose High-quality software to export with libx264.");
 }
 
-function filterGraph(project: VideoProject, cuts: SourceRange[], overlays: EditorialOverlayInterval[], overlayInputStart: number, width: number, height: number): string {
-  const trims = cuts.flatMap((cut, index) => clipFilters(project, cut, index, width, height));
+function filterGraph(project: VideoProject, cuts: SourceRange[], overlays: EditorialOverlayInterval[], overlayInputStart: number, width: number, height: number, alternateAudio = alternateAudioInputs(project, cuts)): string {
+  const trims = cuts.flatMap((cut, index) => clipFilters(project, cut, index, width, height, alternateAudio));
   const inputs = cuts.map((_, index) => `[v${index}][a${index}]`).join("");
   const concat = `${inputs}concat=n=${cuts.length}:v=1:a=1[cutv][exporta]`;
   const overlayFilters = overlays.flatMap((interval, index) => editorialOverlayFilter(project, interval, index, overlayInputStart, width, height));
@@ -144,11 +146,28 @@ function allTextOverlayIntervals(project: VideoProject, cuts: SourceRange[]) {
 
 function escapeDrawtext(text: string) { return text.replaceAll("\\", "\\\\").replaceAll("'", "\\'").replaceAll(":", "\\:").replaceAll("%", "\\%"); }
 
-function clipFilters(project: VideoProject, cut: SourceRange, index: number, width: number, height: number): string[] {
+function clipFilters(project: VideoProject, cut: SourceRange, index: number, width: number, height: number, alternateAudio: AlternateAudioInput[]): string[] {
   const duration = cut.end - cut.start;
   const video = `[${index}:v:0]trim=start=0:end=${duration},setpts=PTS-STARTPTS,scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[v${index}]`;
-  const audio = sourceHasAudio(project, cut) ? `[${index}:a:0]atrim=start=0:end=${duration},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${index}]` : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[a${index}]`;
+  const alternate = alternateAudio.find((item) => item.cutIndex === index);
+  const inputIndex = alternate ? alternate.inputIndex : index;
+  const mix = alternate?.audio.muted ? null : alternate?.audio;
+  const hasAudio = alternate ? sourceHasAudioId(project, alternate.audio.sourceId) : sourceHasAudio(project, cut);
+  const volume = mix && mix.volume !== 1 ? `,volume=${mix.volume}` : "";
+  const audio = hasAudio && (!alternate || mix) ? `[${inputIndex}:a:0]atrim=start=0:end=${duration},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${volume}[a${index}]` : `anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[a${index}]`;
   return [video, audio];
+}
+
+function alternateAudioInputs(project: VideoProject, cuts: SourceRange[]): AlternateAudioInput[] {
+  if (!project.programTimeline?.clips) return [];
+  return cuts.flatMap((cut, cutIndex) => {
+    const audio = project.programTimeline.clips.find((clip) => clip.id === cut.clipId)?.audioSource;
+    return audio ? [{ cutIndex, inputIndex: cuts.length + cutIndexWithAudio(project, cuts, cutIndex), duration: cut.end - cut.start, audio }] : [];
+  });
+}
+
+function cutIndexWithAudio(project: VideoProject, cuts: SourceRange[], before: number) {
+  return cuts.slice(0, before).filter((cut) => project.programTimeline?.clips?.some((clip) => clip.id === cut.clipId && clip.audioSource)).length;
 }
 
 function imageOverlayFilter(project: VideoProject, interval: ImageOverlayCutInterval, index: number, inputIndex: number, width: number, height: number): string[] {
@@ -367,6 +386,9 @@ function sourceHasAudio(project: VideoProject, cut: SourceRange): boolean {
   return source?.metadata?.audioCodec !== null;
 }
 
+function sourceHasAudioId(project: VideoProject, sourceId: string): boolean { return project.mediaLibrary.sources.find((source) => source.id === sourceId)?.metadata?.audioCodec !== null; }
+function mediaPath(project: VideoProject, sourceId: string): string { const source = project.mediaLibrary.sources.find((candidate) => candidate.id === sourceId); if (!source) throw new Error(`Unknown media source: ${sourceId}`); return mediaSourcePath(source); }
+
 function even(value: number): number { return Math.max(2, Math.round(value / 2) * 2); }
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function log(event: string, details: Record<string, unknown>) { console.info(JSON.stringify({ scope: "cutroom-export", event, ...details })); }
@@ -377,6 +399,7 @@ type ExportPaths = { output: string; partial: string; manifest: string; exportVe
 type MediaProbe = { width: number; height: number; videoCodec: string; videoTag: string; videoProfile: string; videoLevel: number; audioCodec: string; audioSampleRate: number; audioChannels: number; duration: number; container: string; rotation: number; averageFrameRate: number; reportedFrameRate: number; frameCount: number; bitRate: number; pixelFormat: string; colorSpace: string; colorTransfer: string; colorPrimaries: string; colorRange: string; sampleAspectRatio: string };
 type ProbeJson = { streams: Array<{ codec_type: string; codec_name: string; codec_tag_string?: string; profile?: string; level?: number; sample_rate?: string; channels?: number; width?: number; height?: number; avg_frame_rate?: string; r_frame_rate?: string; nb_frames?: string; bit_rate?: string; pix_fmt?: string; color_space?: string; color_transfer?: string; color_primaries?: string; color_range?: string; sample_aspect_ratio?: string; side_data_list?: Array<{ side_data_type: string; rotation?: number }> }>; format: { duration: string; format_name?: string } };
 type EditorialOverlayInterval = { kind: "image"; id: string; layer: number; start: number; end: number; interval: ImageOverlayCutInterval } | { kind: "cutout"; id: string; layer: number; start: number; end: number; interval: CutoutProgramInterval } | { kind: "video"; id: string; layer: number; start: number; end: number; interval: VideoOverlayProgramInterval };
+type AlternateAudioInput = { cutIndex: number; inputIndex: number; duration: number; audio: NonNullable<VideoProject["programTimeline"]["clips"][number]["audioSource"]> };
 
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";

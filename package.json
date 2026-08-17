@@ -39,6 +39,7 @@
     "video:cutout": "vite-node scripts/CreateSubjectCutout.ts",
     "video:cutout:clean": "vite-node scripts/RemoveNonReadyCutouts.ts",
     "video:cutout:crop": "vite-node scripts/SetCutoutCrop.ts",
+    "video:cutout:audio": "vite-node scripts/SetSubjectTrackAudio.ts",
     "project:list": "vite-node scripts/ListProjects.ts",
     "project:load": "vite-node scripts/LoadProject.ts",
     "project:rename": "vite-node scripts/RenameProject.ts",

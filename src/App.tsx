@@ -37,9 +37,11 @@ export function App() {
   const [cutoutStatus, setCutoutStatus] = useState<CutoutJobStatus | null>(null);
   const [takePreview, setTakePreview] = useState<TakePreview | null>(null);
   const [buffering, setBuffering] = useState(false);
+  const [audioBuffering, setAudioBuffering] = useState(false);
   const [playbackHealth, setPlaybackHealth] = useState<PlaybackHealth | null>(null);
   const [canvasFallback, setCanvasFallback] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const programAudioRef = useRef<HTMLAudioElement>(null);
   const videoCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const activeRangeRef = useRef(0);
@@ -110,6 +112,9 @@ export function App() {
     ? cutTimeFromSource(ranges, displayRange, currentTime)
     : currentTime;
   const displayDuration = workflowStep === "projects" ? (mode === "cut" ? assembledDuration : duration) : (mode === "cut" ? assembledDuration : originalDuration);
+  const programAudio = mode === "cut" ? activeProgramAudio(playbackProject, ranges, displayRange, currentTime) : null;
+  const programAudioUrl = programAudio && playbackProject ? sourceState(playbackProject, programAudio.sourceId).url : "";
+  useEffect(() => { void synchronizeProgramAudio(programAudioRef.current, programAudio, playing, muted); }, [programAudioUrl, programAudio?.clipId, programAudio?.time, programAudio?.volume, programAudio?.muted, playing, muted]);
   useEffect(() => playbackDiagnosticsRef.current?.updateContext({ mode, sourceUrl: source.url, sourceTime: currentTime, programTime: displayTime, rangeIndex: activeRange }), [mode, source.url, currentTime, displayTime, activeRange]);
 
   function synchronizeProgramStart(nextProject: VideoProject, range: SourceRange) {
@@ -518,6 +523,12 @@ export function App() {
     commitProject({ ...project, cutoutOverlays }, persist);
   }
 
+  function changeSubjectTrackAudio(subjectTrackId: string, volume: number, muted: boolean) {
+    if (!project) return;
+    const clips = project.programTimeline.clips.map((clip) => clip.audioSource?.subjectTrackId === subjectTrackId ? { ...clip, audioSource: { ...clip.audioSource, volume, muted } } : clip);
+    commitProject({ ...project, programTimeline: { ...project.programTimeline, clips } });
+  }
+
   function changeVideoOverlayTiming(id: string, start: number, end: number, persist: boolean) {
     if (!project) return;
     const videoOverlays = project.videoOverlays.map((overlay) => {
@@ -740,17 +751,18 @@ export function App() {
     {playbackHealth && <button className="playback-health" title={playbackHealthTitle(playbackHealth)} onClick={downloadPlaybackDiagnostics}>{playbackHealth.presentedFps >= 10 ? `${Math.round(playbackHealth.presentedFps)} fps` : "Stats"}</button>}
   </div>;
   const videoPreview = <aside className="viewer-column" aria-label="Video preview"><div className={`viewer ${canvasFallback ? "canvas-fallback" : "native-video"}`} ref={viewerRef}>
-    <video className="video-decoder" ref={videoRef} src={source.url} muted={muted} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
+    <video className="video-decoder" ref={videoRef} src={source.url} muted={muted || Boolean(programAudio)} playsInline onLoadedMetadata={handleMetadata} onTimeUpdate={handleTimeUpdate} onSeeked={handleSeeked} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
+    {programAudio && <audio ref={programAudioRef} src={programAudioUrl} preload="auto" onWaiting={() => playing && setAudioBuffering(true)} onStalled={() => playing && setAudioBuffering(true)} onCanPlay={() => setAudioBuffering(false)} onPlaying={() => setAudioBuffering(false)} />}
     <canvas className="video-paint-surface" ref={videoCanvasRef} aria-hidden="true" />
-    {buffering && <span className="buffering-indicator" role="status">Buffering…</span>}
+    {(buffering || audioBuffering) && <span className="buffering-indicator" role="status">Buffering…</span>}
     {project && workflowStep !== "projects" && <EditableOverlayStage project={project} mode={mode} sourceTime={currentTime} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeOverlayLayout} />}
-    {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} onCropChange={changeCutoutCrop} />}
+    {project && workflowStep !== "projects" && <CutoutOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeCutoutLayout} onCropChange={changeCutoutCrop} onAudioChange={changeSubjectTrackAudio} />}
     {project && workflowStep !== "projects" && <VideoOverlayStage project={project} mode={mode} cutTime={displayTime} playing={playing} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onLayoutChange={changeVideoOverlayLayout} />}
     {project && workflowStep !== "projects" && <TextOverlayStage project={project} mode={mode} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} onPositionChange={changeTextOverlayPosition} />}
     {project && workflowStep === "cut" && <SubtitleStage project={project} cutTime={displayTime} selectedId={selectedOverlayId} onSelect={setSelectedOverlayId} />}
     {recordingPreviewProject && workflowStep === "projects" && <div className="recording-preview-overlays" inert>
       <EditableOverlayStage project={recordingPreviewProject} mode="cut" sourceTime={currentTime} cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
-      <CutoutOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} onCropChange={ignoreCutoutCrop} />
+      <CutoutOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} onCropChange={ignoreCutoutCrop} onAudioChange={ignoreSubjectAudio} />
       <VideoOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} playing={playing} selectedId={null} onSelect={ignoreOverlaySelection} onLayoutChange={ignoreOverlayLayout} />
       <TextOverlayStage project={recordingPreviewProject} mode="cut" cutTime={displayTime} selectedId={null} onSelect={ignoreOverlaySelection} onPositionChange={ignoreTextPosition} />
     </div>}
@@ -1414,6 +1426,7 @@ const segmentColors = ["#61d6b3", "#8ea7ff", "#f0a45d", "#d98cff", "#f06f8d"];
 function ignoreOverlaySelection(_id: string) {}
 function ignoreOverlayLayout(_id: string, _layout: OverlayLayout, _commit: boolean) {}
 function ignoreCutoutCrop(_id: string, _crop: CutoutCrop, _commit: boolean) {}
+function ignoreSubjectAudio(_subjectTrackId: string, _volume: number, _muted: boolean) {}
 function ignoreTextPosition(_id: string, _x: number, _y: number, _persist: boolean) {}
 
 function playbackHealthTitle(health: PlaybackHealth) {
@@ -1463,3 +1476,4 @@ import { countProgramScenesAndTakes, recordingProgramSegments, recordingSegmentA
 import { workflowViewForRoute } from "./WorkflowStepModel";
 import { installPlaybackDiagnosticSnapshot, PlaybackDiagnostics, type PlaybackHealth } from "./PlaybackDiagnostics";
 import { normalizedSubjectTrackId } from "./SubjectTrackModel";
+import { activeProgramAudio, synchronizeProgramAudio } from "./ProgramAudioPlayback";

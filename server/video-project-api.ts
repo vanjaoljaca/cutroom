@@ -35,6 +35,7 @@ async function handleProjectRequest(route: ProjectRoute, request: IncomingMessag
     if (route.action === "cutout-job" && route.itemId && request.method === "DELETE") return sendJson(response, 200, await cancelCutoutJob(route.id, route.itemId));
     if (route.action === "cutout-preview" && route.itemId && request.method === "GET") return serveCutoutPreview(route.id, route.itemId, request, response);
     if (route.action === "subject-track-crop" && route.itemId && request.method === "PATCH") return sendJson(response, 200, await updateSubjectTrackCrop(route.id, route.itemId, request));
+    if (route.action === "subject-track-audio" && route.itemId && request.method === "PATCH") return sendJson(response, 200, await updateSubjectTrackAudio(route.id, route.itemId, request));
     if (route.action === "asset" && route.itemId && request.method === "GET") return serveAsset(route.id, route.itemId, response);
     if (route.action === "pitch" && request.method === "GET") return sendJson(response, 200, await readPitchArtifact(route.id));
     if (route.action === "pitch" && request.method === "POST") return sendJson(response, 200, await analyzeProjectPitch(route.id));
@@ -122,6 +123,12 @@ async function updateSubjectTrackCrop(projectId: string, subjectTrackId: string,
   return setSubjectTrackCrop({ projectId, subjectTrackId, revision: input.revision!, crop: input.crop });
 }
 
+async function updateSubjectTrackAudio(projectId: string, subjectTrackId: string, request: IncomingMessage) {
+  const input = JSON.parse(await readBody(request)) as { revision?: number; sourceId?: string; volume?: number; muted?: boolean };
+  if (!Number.isInteger(input.revision) || !input.sourceId || typeof input.volume !== "number" || typeof input.muted !== "boolean") throw new Error("Subject track revision, source, volume, and mute are required.");
+  return setSubjectTrackAudio({ projectId, subjectTrackId, revision: input.revision!, sourceId: input.sourceId, volume: input.volume, muted: input.muted });
+}
+
 async function serveMedia(id: string, request: IncomingMessage, response: ServerResponse) {
   const project = await readStoredProject(id);
   const source = project.mediaLibrary.sources.find((item) => item.id === project.mediaLibrary.primarySourceId);
@@ -189,6 +196,8 @@ function parseRoute(rawUrl = "/"): ProjectRoute | null {
   if (preview) return { id: preview[1], action: "cutout-preview", itemId: preview[2] };
   const subjectCrop = path.match(/^\/api\/projects\/([a-z0-9-]+)\/subject-tracks\/(subject\.[a-z0-9.-]+)\/crop$/);
   if (subjectCrop) return { id: subjectCrop[1], action: "subject-track-crop", itemId: subjectCrop[2] };
+  const subjectAudio = path.match(/^\/api\/projects\/([a-z0-9-]+)\/subject-tracks\/(subject\.[a-z0-9.-]+)\/audio$/);
+  if (subjectAudio) return { id: subjectAudio[1], action: "subject-track-audio", itemId: subjectAudio[2] };
   const cutoutJob = path.match(/^\/api\/projects\/([a-z0-9-]+)\/cutouts\/(cutout-job-[a-z0-9-]+)$/);
   if (cutoutJob) return { id: cutoutJob[1], action: "cutout-job", itemId: cutoutJob[2] };
   const cache = path.match(/^\/api\/projects\/([a-z0-9-]+)\/media\/(media\.[a-z0-9.]+)\/cache$/);
@@ -247,7 +256,7 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(JSON.stringify({ scope: "cutroom-projects", event, ...details }));
 }
 
-type ProjectAction = "catalog" | "references" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "subject-track-crop" | "asset" | "pitch" | "subtitles" | "subtitle-cue" | "exports" | "export-job" | "export-file";
+type ProjectAction = "catalog" | "references" | "raw-media" | "raw-media-attach" | "project" | "media" | "media-references" | "media-source" | "media-transcript" | "media-cache" | "cutouts" | "cutout-job" | "cutout-preview" | "subject-track-crop" | "subject-track-audio" | "asset" | "pitch" | "subtitles" | "subtitle-cue" | "exports" | "export-job" | "export-file";
 type ProjectRoute = { id: string; action: ProjectAction; itemId: string | null };
 type ByteRange = { start: number; end: number };
 
@@ -272,3 +281,4 @@ import { editSubtitle, generateSubtitles, importSubtitles, previewGeneratedSubti
 import { attachLibraryReference, readReferenceMediaLibrary } from "./ReferenceMediaLibrary";
 import type { CutoutCrop } from "../src/CutoutCropModel";
 import { setSubjectTrackCrop } from "./SubjectTrackService";
+import { setSubjectTrackAudio } from "./SubjectTrackAudio";

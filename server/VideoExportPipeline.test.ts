@@ -27,6 +27,15 @@ describe("video export quality contract", () => {
     expect(command.join(" ")).not.toContain("trim=start=900");
   });
 
+  it("replaces a screen clip's audio with its synchronized camera interval", () => {
+    const audioSource = { sourceId: "media.primary", sourceStart: 347.92, sourceEnd: 352.96, volume: 1, muted: false, subjectTrackId: "subject.vanja" };
+    const project = { mediaLibrary: { primarySourceId: "media.primary", sources: [{ id: "media.primary", origin: { type: "local", path: "/media/camera.mov" }, metadata: { audioCodec: "aac" } }, { id: "media.screen", origin: { type: "local", path: "/media/screen.mp4" }, metadata: { audioCodec: "aac" } }] }, programTimeline: { clips: [{ id: "clip.one", audioSource }] }, assetLibrary: { assets: [], bundles: [] }, overlays: [], cutoutOverlays: [], videoOverlays: [], textOverlays: [], subtitleTrack: { cues: [], style: {} } } as unknown as VideoProject;
+    const cuts = [{ clipId: "clip.one", sourceId: "media.screen", start: 62.8, end: 67.84 }] as any;
+    const command = buildExportCommand(project, cuts, { width: 1080, height: 1920, averageFrameRate: 60 } as any, "/tmp/review.mp4", hardwareReviewProfile, "lan-review");
+    expect(command.join(" ")).toContain("-ss 347.920000 -t 5.040000 -i /media/camera.mov");
+    expect(command.join(" ")).toMatch(/\[1:a:0\]atrim=start=0:end=5\.04/);
+  });
+
   it("accepts the source cadence and rejects silent 60-to-30 fps regression", () => {
     expect(() => validateCadence(59.996, 59.998)).not.toThrow();
     expect(() => validateCadence(59.996, 30)).toThrow("source cadence 59.996 fps became 30.000 fps");

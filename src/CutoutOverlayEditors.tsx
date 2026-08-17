@@ -1,8 +1,9 @@
-export function CutoutOverlayStage({ project, mode, cutTime, playing, selectedId, onSelect, onLayoutChange, onCropChange }: CutoutOverlayStageProps) {
+export function CutoutOverlayStage({ project, mode, cutTime, playing, selectedId, onSelect, onLayoutChange, onCropChange, onAudioChange }: CutoutOverlayStageProps) {
   const ranges = programRanges(project);
   const ready = cutoutProgramIntervals(project, ranges).filter((interval) => interval.overlay.processing.status === "ready");
-  return <div className="overlay-stage cutout-stage" aria-label="Subject cutouts">{ready.map((interval) => (
-    <EditableCutout key={interval.overlay.id} projectId={project.id} interval={interval} cutTime={cutTime} playing={playing} visible={mode === "cut" && cutTime >= interval.start && cutTime <= interval.end} selected={selectedId === interval.overlay.id} onSelect={onSelect} onChange={onLayoutChange} onCropChange={onCropChange} />
+  const loaded = loadedCutoutIntervals(ready, mode, cutTime, selectedId);
+  return <div className="overlay-stage cutout-stage" aria-label="Subject cutouts">{loaded.map((interval) => (
+    <EditableCutout key={interval.overlay.id} project={project} interval={interval} cutTime={cutTime} playing={playing} visible={mode === "cut" && cutTime >= interval.start && cutTime <= interval.end} selected={selectedId === interval.overlay.id} onSelect={onSelect} onChange={onLayoutChange} onCropChange={onCropChange} onAudioChange={onAudioChange} />
   ))}</div>;
 }
 
@@ -14,7 +15,7 @@ export function CutoutOverlayTracks({ project, ranges, playhead, selectedId, onS
   return <>{[...tracks].map(([trackId, segments]) => { const order = compositingLaneOrder(segments[0].overlay.layer); const label = subjectTrackLabel(segments.map(({ overlay }) => overlay)); return <Fragment key={trackId}><div className="timeline-track-label cutout-track-label" style={{ order }}>{label}</div><div className="cutout-tracks timeline-track-content" data-overlay-editor aria-label={`Subject ${label}`} style={{ order }}>{segments.map((interval) => <CutoutTimingClip key={interval.overlay.id} interval={interval} duration={duration} selected={selectedId === interval.overlay.id} onSelect={onSelect} onChange={onTimingChange} />)}<span className="track-playhead" aria-hidden="true" style={{ left: playhead }} /></div></Fragment>; })}</>;
 }
 
-function EditableCutout({ projectId, interval, cutTime, playing, visible, selected, onSelect, onChange, onCropChange }: EditableCutoutProps) {
+function EditableCutout({ project, interval, cutTime, playing, visible, selected, onSelect, onChange, onCropChange, onAudioChange }: EditableCutoutProps) {
   const drag = useRef<LayoutDrag | null>(null);
   const cropDrag = useRef<CropDrag | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,11 +57,19 @@ function EditableCutout({ projectId, interval, cutTime, playing, visible, select
   const overlay = interval.overlay;
   const style = { ...overlayFrameStyle(overlay.layout, overlay.opacity, overlay.layer, visible), aspectRatio: croppedAspectRatio(sourceRatio, 1, overlay.crop) };
   const videoStyle = croppedVideoStyle(overlay.crop);
-  return <div className={`cutout-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={style}><button className="overlay-move-surface cutout-viewport" tabIndex={visible ? 0 : -1} aria-label={`Move ${overlay.label} on video`} onClick={() => onSelect(overlay.id)} onDoubleClick={() => { onSelect(overlay.id); setInspectorOpen(true); }} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted playsInline preload="metadata" style={videoStyle} onLoadedMetadata={(event) => setSourceRatio(event.currentTarget.videoWidth / event.currentTarget.videoHeight)} src={`/api/projects/${projectId}/cutouts/${overlay.id}/preview`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} />{selected && inspectorOpen && <>{cropEdges.map((edge) => <button key={edge} className={`cutout-crop-handle ${edge}`} aria-label={`Crop ${edge} of ${subjectTrackLabel([overlay])}`} onPointerDown={(event) => beginCrop(event, edge)} onPointerMove={moveCrop} onPointerUp={(event) => moveCrop(event, true)} />)}<CutoutCropInspector overlay={overlay} onChange={onCropChange} onClose={() => setInspectorOpen(false)} /></>}</div>;
+  const audio = project.programTimeline.clips.find((clip) => clip.id === overlay.target.clipId)?.audioSource || null;
+  return <div className={`cutout-overlay-item ${selected ? "selected" : ""}`} data-overlay-editor aria-hidden={!visible} style={style}><button className="overlay-move-surface cutout-viewport" tabIndex={visible ? 0 : -1} aria-label={`Move ${overlay.label} on video`} onClick={() => onSelect(overlay.id)} onDoubleClick={() => { onSelect(overlay.id); setInspectorOpen(true); }} onPointerDown={(event) => begin(event, "move")} onPointerMove={move} onPointerUp={finish}><video ref={videoRef} muted playsInline preload={visible ? "auto" : "metadata"} style={videoStyle} onLoadedMetadata={(event) => setSourceRatio(event.currentTarget.videoWidth / event.currentTarget.videoHeight)} src={`/api/projects/${project.id}/cutouts/${overlay.id}/preview`} /></button><button className="overlay-resize-handle" aria-label={`Resize ${overlay.label}`} onPointerDown={(event) => begin(event, "resize")} onPointerMove={move} onPointerUp={finish} />{selected && inspectorOpen && <>{cropEdges.map((edge) => <button key={edge} className={`cutout-crop-handle ${edge}`} aria-label={`Crop ${edge} of ${subjectTrackLabel([overlay])}`} onPointerDown={(event) => beginCrop(event, edge)} onPointerMove={moveCrop} onPointerUp={(event) => moveCrop(event, true)} />)}<CutoutCropInspector overlay={overlay} audio={audio} onChange={onCropChange} onAudioChange={onAudioChange} onClose={() => setInspectorOpen(false)} /></>}</div>;
 }
 
-function CutoutCropInspector({ overlay, onChange, onClose }: CropInspectorProps) {
-  return <section className="cutout-crop-control" aria-label={`Crop ${subjectTrackLabel([overlay])}`}><header><strong>{subjectTrackLabel([overlay])}</strong><button onClick={() => onChange(overlay.id, zeroCrop, true)}>Reset</button><button aria-label="Close subject editor" onClick={onClose}>×</button></header>{cropEdges.map((edge) => <label key={edge}><span>{edge}</span><input aria-label={`${edge} crop slider`} type="range" min="0" max={Math.floor(cropMaximum(overlay.crop, edge) * 100)} value={Math.round(overlay.crop[edge] * 100)} onChange={(event) => changeCropEdge(overlay, edge, event.currentTarget.value, onChange)} /><input aria-label={`${edge} crop percentage`} type="number" min="0" max={Math.floor(cropMaximum(overlay.crop, edge) * 100)} value={Math.round(overlay.crop[edge] * 100)} onChange={(event) => changeCropEdge(overlay, edge, event.currentTarget.value, onChange)} /><output>%</output></label>)}</section>;
+export function loadedCutoutIntervals(intervals: CutoutProgramInterval[], mode: ViewMode, cutTime: number, selectedId: string | null) {
+  if (mode !== "cut") return [];
+  const active = intervals.findIndex((interval) => cutTime >= interval.start && cutTime <= interval.end);
+  const upcoming = intervals.findIndex((interval) => interval.start > cutTime);
+  return intervals.filter((interval, index) => index === active || index === upcoming || interval.overlay.id === selectedId);
+}
+
+function CutoutCropInspector({ overlay, audio, onChange, onAudioChange, onClose }: CropInspectorProps) {
+  return <section className="cutout-crop-control" aria-label={`Edit ${subjectTrackLabel([overlay])}`}><header><strong>{subjectTrackLabel([overlay])}</strong><button onClick={() => onChange(overlay.id, zeroCrop, true)}>Reset crop</button><button aria-label="Close subject editor" onClick={onClose}>×</button></header>{cropEdges.map((edge) => <label key={edge}><span>{edge}</span><input aria-label={`${edge} crop slider`} type="range" min="0" max={Math.floor(cropMaximum(overlay.crop, edge) * 100)} value={Math.round(overlay.crop[edge] * 100)} onChange={(event) => changeCropEdge(overlay, edge, event.currentTarget.value, onChange)} /><input aria-label={`${edge} crop percentage`} type="number" min="0" max={Math.floor(cropMaximum(overlay.crop, edge) * 100)} value={Math.round(overlay.crop[edge] * 100)} onChange={(event) => changeCropEdge(overlay, edge, event.currentTarget.value, onChange)} /><output>%</output></label>)}{audio && <><label><span>Voice</span><input aria-label="Subject voice volume" type="range" min="0" max="200" value={Math.round(audio.volume * 100)} onChange={(event) => onAudioChange(overlay.subjectTrackId!, Number(event.currentTarget.value) / 100, audio.muted)} /><output>{Math.round(audio.volume * 100)}%</output></label><label><span>Mute voice</span><input aria-label="Mute subject voice" type="checkbox" checked={audio.muted} onChange={(event) => onAudioChange(overlay.subjectTrackId!, audio.volume, event.currentTarget.checked)} /></label></>}</section>;
 }
 
 function changeCropEdge(overlay: CutoutProgramInterval["overlay"], edge: CropEdge, value: string, onChange: CropChange) { onChange(overlay.id, { ...overlay.crop, [edge]: Number(value) / 100 }, true); }
@@ -141,18 +150,19 @@ type TimingDragMode = "move" | "start" | "end";
 type LayoutDrag = { mode: LayoutDragMode; clientX: number; clientY: number; width: number; height: number; x: number; y: number; overlayWidth: number; overlayHeight: number | null; pixelWidth: number; pixelHeight: number };
 type CropDrag = { edge: CropEdge; clientX: number; clientY: number; fullWidth: number; fullHeight: number; crop: CutoutCrop };
 type CropEdge = typeof cropEdges[number];
-type CropInspectorProps = { overlay: CutoutProgramInterval["overlay"]; onChange: CropChange; onClose: () => void };
+type CropInspectorProps = { overlay: CutoutProgramInterval["overlay"]; audio: ProgramAudioSource | null; onChange: CropChange; onAudioChange: AudioChange; onClose: () => void };
 type TimingDrag = { mode: TimingDragMode; left: number; width: number; pointer: number; start: number; end: number };
 type LayoutChange = (id: string, layout: OverlayLayout, commit: boolean) => void;
 type CropChange = (id: string, crop: CutoutCrop, commit: boolean) => void;
+type AudioChange = (subjectTrackId: string, volume: number, muted: boolean) => void;
 type TimingChange = (id: string, start: number, end: number, commit: boolean) => void;
-type CutoutOverlayStageProps = { project: VideoProject; mode: ViewMode; cutTime: number; playing: boolean; selectedId: string | null; onSelect: (id: string) => void; onLayoutChange: LayoutChange; onCropChange: CropChange };
+type CutoutOverlayStageProps = { project: VideoProject; mode: ViewMode; cutTime: number; playing: boolean; selectedId: string | null; onSelect: (id: string) => void; onLayoutChange: LayoutChange; onCropChange: CropChange; onAudioChange: AudioChange };
 type CutoutOverlayTracksProps = { project: VideoProject; ranges: SourceRange[]; playhead: string; selectedId: string | null; onSelect: (id: string, start: number) => void; onTimingChange: TimingChange };
-type EditableCutoutProps = { projectId: string; interval: CutoutProgramInterval; cutTime: number; playing: boolean; visible: boolean; selected: boolean; onSelect: (id: string) => void; onChange: LayoutChange; onCropChange: CropChange };
+type EditableCutoutProps = { project: VideoProject; interval: CutoutProgramInterval; cutTime: number; playing: boolean; visible: boolean; selected: boolean; onSelect: (id: string) => void; onChange: LayoutChange; onCropChange: CropChange; onAudioChange: AudioChange };
 type CutoutTimingClipProps = { interval: CutoutProgramInterval; duration: number; selected: boolean; onSelect: (id: string, start: number) => void; onChange: TimingChange };
 
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import type { OverlayLayout, VideoProject } from "./analysis-model";
+import type { OverlayLayout, ProgramAudioSource, VideoProject } from "./analysis-model";
 import { cutDuration, type SourceRange, type ViewMode } from "./editor-model";
 import { cutoutProgramIntervals, type CutoutProgramInterval } from "./CutoutOverlayModel";
 import { programRanges } from "./ProgramTimelineModel";

@@ -56,8 +56,9 @@ export function splitProgramClip(timeline: ProgramTimeline, id: string, sourceTi
   const index = timeline.clips.findIndex((clip) => clip.id === id);
   const clip = timeline.clips[index];
   if (!clip || sourceTime - clip.sourceStart < minimumDuration || clip.sourceEnd - sourceTime < minimumDuration) return timeline;
-  const left = { ...clip, sourceEnd: sourceTime };
-  const right = { ...clip, id: rightId, sourceStart: sourceTime };
+  const audioSplit = clip.audioSource ? clip.audioSource.sourceStart + sourceTime - clip.sourceStart : null;
+  const left = { ...clip, sourceEnd: sourceTime, audioSource: clip.audioSource && audioSplit !== null ? { ...clip.audioSource, sourceEnd: audioSplit } : clip.audioSource };
+  const right = { ...clip, id: rightId, sourceStart: sourceTime, audioSource: clip.audioSource && audioSplit !== null ? { ...clip.audioSource, sourceStart: audioSplit } : clip.audioSource };
   return { ...timeline, clips: [...timeline.clips.slice(0, index), left, right, ...timeline.clips.slice(index + 1)] };
 }
 
@@ -84,8 +85,9 @@ function sceneRange(project: VideoProject, clip: ProgramClip) {
 }
 
 function trimClip(clip: ProgramClip, edge: "start" | "end", value: number): ProgramClip {
-  if (edge === "start") return { ...clip, sourceStart: Math.min(value, clip.sourceEnd - minimumDuration) };
-  return { ...clip, sourceEnd: Math.max(value, clip.sourceStart + minimumDuration) };
+  if (edge === "start") { const sourceStart = Math.min(value, clip.sourceEnd - minimumDuration); return { ...clip, sourceStart, audioSource: clip.audioSource ? { ...clip.audioSource, sourceStart: clip.audioSource.sourceStart + sourceStart - clip.sourceStart } : clip.audioSource }; }
+  const sourceEnd = Math.max(value, clip.sourceStart + minimumDuration);
+  return { ...clip, sourceEnd, audioSource: clip.audioSource ? { ...clip.audioSource, sourceEnd: clip.audioSource.sourceEnd + sourceEnd - clip.sourceEnd } : clip.audioSource };
 }
 
 function sceneClipId(sceneId: string) { return `clip.scene.${sceneId.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "")}`; }

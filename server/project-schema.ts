@@ -157,6 +157,7 @@ function validateProgramTimeline(project: VideoProject) {
     assert(!ids.has(clip.id) && /^clip\.[a-z0-9.-]+$/.test(clip.id), `Invalid program clip id: ${clip.id}`);
     assert(project.mediaLibrary.sources.some((source) => source.id === clip.sourceId), `Unknown program clip source: ${clip.id}`);
     assert(clip.label.trim().length > 0 && clip.sourceStart >= 0 && clip.sourceEnd - clip.sourceStart >= 0.08, `Invalid program clip interval: ${clip.id}`);
+    validateProgramAudio(project, clip);
     if (clip.kind === "scene") validateSceneClip(project, clip);
     else assert(clip.kind === "source" && clip.sceneId === null && clip.takeId === null, `Invalid source clip: ${clip.id}`);
     ids.add(clip.id);
@@ -175,9 +176,20 @@ function validateProgramClip(project: VideoProject, clip: ProgramClip, ids: Set<
   assert(!ids.has(clip.id) && /^clip\.[a-z0-9.-]+$/.test(clip.id), `Invalid program clip id: ${clip.id}`);
   assert(project.mediaLibrary.sources.some((source) => source.id === clip.sourceId), `Unknown program clip source: ${clip.id}`);
   assert(clip.label.trim().length > 0 && clip.sourceStart >= 0 && clip.sourceEnd - clip.sourceStart >= 0.08, `Invalid program clip interval: ${clip.id}`);
+  validateProgramAudio(project, clip);
   if (clip.kind === "scene") validateSceneClip(project, clip);
   else assert(clip.kind === "source" && clip.sceneId === null && clip.takeId === null, `Invalid source clip: ${clip.id}`);
   ids.add(clip.id);
+}
+
+function validateProgramAudio(project: VideoProject, clip: ProgramClip) {
+  const audio = clip.audioSource;
+  if (!audio) return;
+  assert(project.mediaLibrary.sources.some((source) => source.id === audio.sourceId), `Unknown program audio source: ${clip.id}`);
+  assert(audio.sourceStart >= 0 && audio.sourceEnd > audio.sourceStart, `Invalid program audio interval: ${clip.id}`);
+  assert(Math.abs((audio.sourceEnd - audio.sourceStart) - (clip.sourceEnd - clip.sourceStart)) <= 0.01, `Program audio duration mismatch: ${clip.id}`);
+  assert(audio.volume >= 0 && audio.volume <= 2 && typeof audio.muted === "boolean", `Invalid program audio mix: ${clip.id}`);
+  assert(audio.subjectTrackId === null || /^subject\.[a-z0-9.-]+$/.test(audio.subjectTrackId), `Invalid program audio subject track: ${clip.id}`);
 }
 
 function validateSceneClip(project: VideoProject, clip: ProgramClip) {
